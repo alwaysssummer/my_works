@@ -5,6 +5,7 @@ import { Block, BlockColumn, Top3History } from "@/types/block";
 import { BlockProperty, PropertyType, createPropertyValue, DEFAULT_PROPERTIES, LegacyBlockProperty } from "@/types/property";
 import { supabase } from "@/lib/supabase";
 import { mockBlocks } from "@/data/mockData";
+import { useBlockSelection } from "./useBlockSelection";
 
 // 기존 propertyId를 기본 이름으로 매핑
 function getDefaultPropertyName(propertyId: string): string {
@@ -73,9 +74,15 @@ export function useBlocks() {
   const [top3History, setTop3History] = useState<Top3History[]>([]);
   const [useSupabase, setUseSupabase] = useState(false);
 
-  // 다중 선택 상태
-  const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  // 다중 선택 (useBlockSelection 훅 사용)
+  const {
+    selectedIds: selectedBlockIds,
+    isSelectionMode,
+    toggleSelectionMode,
+    toggleBlock: toggleBlockSelection,
+    selectAll: selectAllBlocks,
+    clear: clearSelection,
+  } = useBlockSelection();
 
   // Supabase 동기화를 위한 debounce용 ref
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -104,7 +111,9 @@ export function useBlocks() {
           .insert(dbBlocks);
 
         if (insertError) {
-          console.error("Supabase 삽입 오류:", insertError);
+          console.error("Supabase 삽입 오류:", insertError.message, insertError.code, insertError.details);
+        } else {
+          console.log("Supabase 동기화 완료:", blocksToSync.length, "개 블록");
         }
       }
     } catch (err) {
@@ -852,44 +861,11 @@ export function useBlocks() {
     );
   }, []);
 
-  // 선택 모드 토글
-  const toggleSelectionMode = useCallback(() => {
-    setIsSelectionMode((prev) => {
-      if (prev) {
-        setSelectedBlockIds(new Set());
-      }
-      return !prev;
-    });
-  }, []);
-
-  // 개별 블록 선택 토글
-  const toggleBlockSelection = useCallback((id: string) => {
-    setSelectedBlockIds((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  }, []);
-
-  // 전체 선택
-  const selectAllBlocks = useCallback((blockIds: string[]) => {
-    setSelectedBlockIds(new Set(blockIds));
-  }, []);
-
-  // 선택 해제
-  const clearSelection = useCallback(() => {
-    setSelectedBlockIds(new Set());
-  }, []);
-
   // 선택된 블록 일괄 삭제
   const deleteSelectedBlocks = useCallback(() => {
     setBlocks((prev) => prev.filter((block) => !selectedBlockIds.has(block.id)));
-    setSelectedBlockIds(new Set());
-  }, [selectedBlockIds]);
+    clearSelection();
+  }, [selectedBlockIds, clearSelection]);
 
   return {
     blocks,
