@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Block } from "@/types/block";
+import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
 
 interface SearchModalProps {
   blocks: Block[];
@@ -155,23 +156,29 @@ export function SearchModal({
             </div>
           ) : (
             <div className="py-1">
-              {searchResults.map((block, index) => (
-                <button
-                  key={block.id}
-                  onClick={() => {
-                    onSelectBlock(block.id);
-                    onClose();
-                  }}
-                  className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 ${
-                    index === selectedIndex ? "bg-accent" : "hover:bg-accent/50"
-                  }`}
-                >
-                  <span className="text-muted-foreground">📝</span>
-                  <span className="flex-1 truncate">
-                    {highlightQuery(getPreview(block.content))}
-                  </span>
-                </button>
-              ))}
+              {searchResults.map((block, index) => {
+                const parsed = parseBlockContent(block.content);
+                const title = getBlockTitle(block.content, 45);
+                return (
+                  <button
+                    key={block.id}
+                    onClick={() => {
+                      onSelectBlock(block.id);
+                      onClose();
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 ${
+                      index === selectedIndex ? "bg-accent" : "hover:bg-accent/50"
+                    }`}
+                  >
+                    <span style={{ color: parsed.color || undefined }}>
+                      {parsed.icon || "📝"}
+                    </span>
+                    <span className="flex-1 truncate">
+                      {highlightQuery(title || "(빈 블록)")}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

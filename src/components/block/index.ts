@@ -3,3 +3,4 @@ export { TagInput } from "./TagInput";
 export { PropertyPanel } from "./PropertyPanel";
 export { SlashMenu } from "./SlashMenu";
 export { PropertyModal } from "./PropertyModal";
+export { BlockDetailModal } from "./BlockDetailModal";

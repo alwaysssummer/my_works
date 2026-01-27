@@ -3,10 +3,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
 import { Block } from "@/types/block";
 import { DEFAULT_PROPERTIES, PropertyType, Tag, PRIORITY_COLORS, PRIORITY_LABELS, PriorityLevel, RepeatConfig, REPEAT_LABELS } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { SlashMenu } from "./SlashMenu";
+import { saveImage, getImage } from "@/lib/imageStorage";
+import { parseBlockContent } from "@/lib/blockParser";
 
 interface BlockItemProps {
   block: Block;
@@ -32,6 +39,9 @@ interface BlockItemProps {
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
   onDuplicate?: (id: string) => string;
+  onTogglePin?: (id: string) => void;
+  frequentTags?: Tag[];
+  isInboxView?: boolean;
 }
 
 export function BlockItem({
@@ -58,6 +68,9 @@ export function BlockItem({
   onMoveUp,
   onMoveDown,
   onDuplicate,
+  onTogglePin,
+  frequentTags = [],
+  isInboxView = false,
 }: BlockItemProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showPropertyMenu, setShowPropertyMenu] = useState(false);
@@ -92,6 +105,9 @@ export function BlockItem({
   const hasRepeat = !!repeatProperty;
   const repeatConfig: RepeatConfig | null = repeatProperty?.value.type === "repeat" ? repeatProperty.value.config : null;
 
+  // 블록 파싱 (카테고리 아이콘 표시용)
+  const parsedBlock = parseBlockContent(block.content);
+
   const handleDateChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       e.stopPropagation();
@@ -112,6 +128,32 @@ export function BlockItem({
     [block.id, onRemoveProperty]
   );
 
+  // 빠른 태그 추가 (빠른 분류용)
+  const handleQuickAddTag = useCallback(
+    (e: React.MouseEvent, tagId: string) => {
+      e.stopPropagation();
+      // 태그 속성이 없으면 추가
+      if (!hasTag) {
+        onAddProperty(block.id, "tag", "tag");
+      }
+      // 태그 값 업데이트 (기존 태그에 추가)
+      onUpdateProperty(block.id, "tag", {
+        type: "tag",
+        tagIds: [...tagIds, tagId],
+      });
+    },
+    [block.id, hasTag, tagIds, onAddProperty, onUpdateProperty]
+  );
+
+  // 빠른 타입 적용 (빠른 분류용)
+  const handleQuickApplyType = useCallback(
+    (e: React.MouseEvent, typeId: string) => {
+      e.stopPropagation();
+      onApplyType?.(block.id, typeId);
+    },
+    [block.id, onApplyType]
+  );
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -120,11 +162,58 @@ export function BlockItem({
         bulletList: { keepMarks: true },
         orderedList: { keepMarks: true },
       }),
+      Image.configure({
+        inline: false,
+        allowBase64: false,
+        HTMLAttributes: {
+          class: "max-w-full h-auto rounded my-2",
+        },
+      }),
+      Table.configure({
+        resizable: true,
+      }),
+      TableRow,
+      TableCell,
+      TableHeader,
     ],
     content: block.content,
     editorProps: {
       attributes: {
         class: `outline-none min-h-[1.5em] ${isChecked ? "line-through text-muted-foreground" : ""}`,
+      },
+      // 이미지 붙여넣기 핸들러
+      handlePaste: (view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.startsWith("image/")) {
+            event.preventDefault();
+            const blob = item.getAsFile();
+            if (!blob) continue;
+
+            // 비동기로 이미지 저장 및 삽입
+            (async () => {
+              try {
+                const imageId = await saveImage(blob);
+                const url = await getImage(imageId);
+                if (url && editor) {
+                  editor
+                    .chain()
+                    .focus()
+                    .setImage({ src: url, alt: `image-${imageId}` })
+                    .run();
+                }
+              } catch (error) {
+                console.error("이미지 저장 실패:", error);
+              }
+            })();
+
+            return true;
+          }
+        }
+        return false;
       },
       handleKeyDown: (view, event) => {
         if (event.key === "Enter" && !event.shiftKey) {
@@ -535,6 +624,19 @@ export function BlockItem({
             </button>
           )}
 
+          {/* 고정/해제 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin?.(block.id);
+              setShowMenu(false);
+            }}
+            className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
+          >
+            <span>{block.isPinned ? "📌" : "📍"}</span>
+            {block.isPinned ? "고정 해제" : "상단에 고정"}
+          </button>
+
           {/* 타입 적용 */}
           {blockTypes.length > 0 && (
             <div className="relative">
@@ -592,6 +694,18 @@ export function BlockItem({
         </div>
       )}
 
+      {/* 고정 표시 */}
+      {block.isPinned && (
+        <span
+          className="absolute top-1.5 text-xs cursor-pointer hover:scale-110 transition-transform"
+          style={{ left: `${indentPadding - 36}px` }}
+          onClick={() => onTogglePin?.(block.id)}
+          title="고정 해제"
+        >
+          📌
+        </span>
+      )}
+
       {/* 토글 버튼 (하위 블록 있을 때) */}
       {hasChildren && (
         <button
@@ -616,6 +730,17 @@ export function BlockItem({
         className="flex items-start gap-2"
         onDoubleClick={() => onOpenPropertyPanel?.(block.id)}
       >
+        {/* 카테고리 아이콘 */}
+        {parsedBlock.category && parsedBlock.icon && (
+          <span
+            className="mt-0.5 flex-shrink-0 text-sm"
+            style={{ color: parsedBlock.color || undefined }}
+            title={parsedBlock.category}
+          >
+            {parsedBlock.icon}
+          </span>
+        )}
+
         {/* 우선순위 표시 */}
         {hasPriority && priorityLevel !== "none" && (
           <span
@@ -683,6 +808,39 @@ export function BlockItem({
               >
                 {tag.name}
               </span>
+            ))}
+          </div>
+        )}
+
+        {/* 빠른 분류 버튼 (속성이 없는 블록 또는 인박스 뷰에서 호버 시 표시) */}
+        {(isInboxView || block.properties.length === 0) && (frequentTags.length > 0 || blockTypes.length > 0) && (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            {/* 자주 쓰는 태그 (이미 있는 태그 제외) */}
+            {frequentTags
+              .filter((tag) => !tagIds.includes(tag.id))
+              .slice(0, 3)
+              .map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={(e) => handleQuickAddTag(e, tag.id)}
+                  className="px-1.5 py-0.5 rounded text-[10px] text-white hover:opacity-80 transition-opacity"
+                  style={{ backgroundColor: tag.color }}
+                  title={`${tag.name} 태그 추가`}
+                >
+                  +{tag.name}
+                </button>
+              ))}
+
+            {/* 자주 쓰는 타입 */}
+            {blockTypes.slice(0, 2).map((type) => (
+              <button
+                key={type.id}
+                onClick={(e) => handleQuickApplyType(e, type.id)}
+                className="px-1.5 py-0.5 rounded text-[10px] bg-accent hover:bg-accent/80 transition-colors"
+                title={`${type.name} 타입 적용`}
+              >
+                {type.icon}
+              </button>
             ))}
           </div>
         )}

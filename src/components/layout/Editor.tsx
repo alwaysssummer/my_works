@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { Block } from "@/types/block";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { Block, BlockColumn } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { ViewType } from "@/types/view";
-import { BlockItem, PropertyModal } from "@/components/block";
+import { BlockItem, PropertyModal, BlockDetailModal } from "@/components/block";
+import { ThreeColumnLayout } from "./columns";
 
 // 정렬 타입
 type SortType = "newest" | "oldest" | "date" | "priority";
@@ -54,6 +55,10 @@ interface EditorProps {
   onDeleteCompletedTodos?: () => void;
   selectedBlockId?: string | null;
   onClearSelection?: () => void;
+  triggerQuickInput?: number;
+  onTogglePin?: (id: string) => void;
+  onMoveToColumn?: (id: string, column: BlockColumn) => void;
+  frequentTags?: Tag[];
 }
 
 export function Editor({
@@ -85,12 +90,22 @@ export function Editor({
   onDeleteCompletedTodos,
   selectedBlockId,
   onClearSelection,
+  triggerQuickInput,
+  onTogglePin,
+  onMoveToColumn,
+  frequentTags = [],
 }: EditorProps) {
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [panelBlockId, setPanelBlockId] = useState<string | null>(null);
   const [sortType, setSortType] = useState<SortType>("newest");
   const [hideCompleted, setHideCompleted] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [showUnorganizedOnly, setShowUnorganizedOnly] = useState(false);
+
+  // 빠른 입력창 상태
+  const [quickInputExpanded, setQuickInputExpanded] = useState(false);
+  const [quickInputValue, setQuickInputValue] = useState("");
+  const quickInputRef = useRef<HTMLTextAreaElement>(null);
 
   // 검색에서 선택된 블록에 포커스
   useEffect(() => {
@@ -121,6 +136,62 @@ export function Editor({
       setFocusedBlockId(newId);
     }
   }, [isLoaded, blocks.length, onAddBlock]);
+
+  // 페이지 로드 시 빠른 입력창에 자동 포커스
+  useEffect(() => {
+    if (isLoaded && quickInputRef.current) {
+      // 약간의 딜레이 후 포커스 (렌더링 완료 대기)
+      const timer = setTimeout(() => {
+        quickInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoaded]);
+
+  // 빠른 입력창 외부 클릭 시 접기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (quickInputExpanded && !target.closest(".quick-input-card")) {
+        if (!quickInputValue.trim()) {
+          setQuickInputExpanded(false);
+        }
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [quickInputExpanded, quickInputValue]);
+
+  // 빠른 입력창 제출
+  const handleQuickInputSubmit = useCallback(() => {
+    if (quickInputValue.trim()) {
+      const lines = quickInputValue.trim().split("\n");
+      // 각 줄마다 블록 생성
+      lines.forEach((line) => {
+        if (line.trim()) {
+          const newId = onAddBlock();
+          onUpdateBlock(newId, `<p>${line.trim()}</p>`);
+        }
+      });
+      setQuickInputValue("");
+      setQuickInputExpanded(false);
+    }
+  }, [quickInputValue, onAddBlock, onUpdateBlock]);
+
+  // 빠른 입력창에 포커스 (외부에서 호출용)
+  const focusQuickInput = useCallback(() => {
+    setQuickInputExpanded(true);
+    setTimeout(() => {
+      quickInputRef.current?.focus();
+    }, 50);
+  }, []);
+
+  // n 단축키로 빠른 입력창 포커스
+  useEffect(() => {
+    if (triggerQuickInput && triggerQuickInput > 0) {
+      focusQuickInput();
+    }
+  }, [triggerQuickInput, focusQuickInput]);
 
   const handleAddAfter = useCallback(
     (afterId: string) => {
@@ -207,6 +278,11 @@ export function Editor({
     [blocks.length, onAddBlock]
   );
 
+  // 정리 안 된 블록 수 (속성이 없는 블록)
+  const unorganizedCount = useMemo(() => {
+    return filteredBlocks.filter((block) => block.properties.length === 0).length;
+  }, [filteredBlocks]);
+
   // 뷰에 따라 보이는 블록 필터링 (접힌 블록 제외)
   const visibleBlocks = useMemo(() => {
     let result = filteredBlocks;
@@ -217,6 +293,11 @@ export function Editor({
         const index = blocks.findIndex((b) => b.id === block.id);
         return !isChildOfCollapsed(index);
       });
+
+      // 정리 안 된 것만 필터
+      if (showUnorganizedOnly) {
+        result = result.filter((block) => block.properties.length === 0);
+      }
     }
 
     // 완료된 할일 숨기기 (할일 뷰에서만)
@@ -256,8 +337,13 @@ export function Editor({
       });
     }
 
+    // 고정된 블록을 상단에 표시
+    const pinned = result.filter((b) => b.isPinned);
+    const unpinned = result.filter((b) => !b.isPinned);
+    result = [...pinned, ...unpinned];
+
     return result;
-  }, [filteredBlocks, blocks, viewType, isChildOfCollapsed, hideCompleted, sortType]);
+  }, [filteredBlocks, blocks, viewType, isChildOfCollapsed, hideCompleted, sortType, showUnorganizedOnly]);
 
   // 완료된 할일 수 (할일 뷰용)
   const todoStats = useMemo(() => {
@@ -283,6 +369,55 @@ export function Editor({
     );
   }
 
+  // 전체 뷰: 3열 레이아웃
+  if (viewType === "all" && onMoveToColumn) {
+    return (
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* 간소화된 헤더 */}
+        <header className="h-12 flex items-center justify-between px-4 border-b border-border bg-background flex-shrink-0">
+          <div className="text-sm font-medium">{viewTitle}</div>
+          <span className="text-xs text-muted-foreground">
+            {blocks.length}개 블록
+          </span>
+        </header>
+
+        {/* 3열 레이아웃 */}
+        <div className="flex-1 overflow-hidden">
+          <ThreeColumnLayout
+            blocks={blocks}
+            allTags={tags}
+            onAddBlock={onAddBlock}
+            onUpdateBlock={onUpdateBlock}
+            onMoveToColumn={onMoveToColumn}
+            onOpenDetail={handleOpenPropertyPanel}
+            onAddProperty={onAddProperty}
+            onUpdateProperty={onUpdateProperty}
+            onCreateTag={onCreateTag}
+          />
+        </div>
+
+        {/* 블록 상세 모달 */}
+        {panelBlock && (
+          <BlockDetailModal
+            block={panelBlock}
+            allTags={tags}
+            blockTypes={blockTypes}
+            onUpdateBlock={onUpdateBlock}
+            onAddProperty={onAddProperty}
+            onUpdateProperty={onUpdateProperty}
+            onRemoveProperty={onRemoveProperty}
+            onCreateTag={onCreateTag}
+            onApplyType={onApplyType}
+            onMoveToColumn={onMoveToColumn}
+            onDeleteBlock={onDeleteBlock}
+            onClose={handleClosePanel}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // 기본 뷰: 기존 단일 열 레이아웃
   return (
     <div className="flex-1 flex h-screen overflow-hidden">
       {/* 메인 편집 영역 */}
@@ -365,31 +500,82 @@ export function Editor({
             </div>
           </div>
 
-          {/* 빠른 입력창 */}
-          {viewType === "all" && (
-            <div className="px-4 pb-3">
-              <div className="max-w-3xl mx-auto">
-                <div className="flex items-center gap-2 px-3 py-2 bg-accent/30 hover:bg-accent/50 rounded-lg border border-border focus-within:border-primary focus-within:bg-accent/50 transition-colors">
-                  <span className="text-muted-foreground text-lg">+</span>
-                  <input
-                    type="text"
-                    placeholder="새 블록 추가... (Enter로 추가)"
-                    className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                        e.preventDefault();
-                        const content = e.currentTarget.value.trim();
-                        const newId = onAddBlock();
-                        onUpdateBlock(newId, `<p>${content}</p>`);
-                        e.currentTarget.value = "";
-                        setFocusedBlockId(newId);
-                      }
+          {/* 빠른 입력창 - 구글 킵 스타일 카드 */}
+          <div className="px-4 pb-3">
+            <div className="max-w-3xl mx-auto">
+              <div
+                className={`quick-input-card rounded-lg border shadow-sm transition-all duration-200 ${
+                  quickInputExpanded
+                    ? "border-primary bg-card shadow-md"
+                    : "border-border bg-accent/30 hover:bg-accent/50 hover:shadow"
+                }`}
+              >
+                {/* 접힌 상태: 한 줄 입력창 */}
+                {!quickInputExpanded ? (
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 cursor-text"
+                    onClick={() => {
+                      setQuickInputExpanded(true);
+                      setTimeout(() => quickInputRef.current?.focus(), 50);
                     }}
-                  />
-                </div>
+                  >
+                    <span className="text-muted-foreground text-xl">+</span>
+                    <span className="text-muted-foreground text-sm">
+                      메모 작성...
+                    </span>
+                  </div>
+                ) : (
+                  /* 확장된 상태: 여러 줄 입력 + 툴바 */
+                  <div className="p-3">
+                    <textarea
+                      ref={quickInputRef}
+                      value={quickInputValue}
+                      onChange={(e) => setQuickInputValue(e.target.value)}
+                      placeholder="여기에 입력하세요...&#10;여러 줄을 입력하면 각각 블록이 됩니다."
+                      className="w-full bg-transparent outline-none text-sm resize-none min-h-[80px] placeholder:text-muted-foreground"
+                      rows={3}
+                      onKeyDown={(e) => {
+                        // Ctrl+Enter로 제출
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          handleQuickInputSubmit();
+                        }
+                        // Escape로 취소
+                        if (e.key === "Escape") {
+                          setQuickInputValue("");
+                          setQuickInputExpanded(false);
+                        }
+                      }}
+                    />
+                    {/* 하단 툴바 */}
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <span className="text-xs">Ctrl+Enter로 추가</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setQuickInputValue("");
+                            setQuickInputExpanded(false);
+                          }}
+                          className="px-3 py-1 text-xs text-muted-foreground hover:bg-accent rounded"
+                        >
+                          취소
+                        </button>
+                        <button
+                          onClick={handleQuickInputSubmit}
+                          disabled={!quickInputValue.trim()}
+                          className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          추가
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
+          </div>
         </header>
 
         {/* 편집 영역 */}
@@ -426,36 +612,34 @@ export function Editor({
                 onMoveUp={onMoveBlockUp}
                 onMoveDown={onMoveBlockDown}
                 onDuplicate={onDuplicateBlock}
+                onTogglePin={onTogglePin}
+                frequentTags={frequentTags}
+                isInboxView={false}
               />
             ))}
           </div>
 
           {visibleBlocks.length === 0 && (
             <div className="text-center text-muted-foreground py-20">
-              {viewType === "all" ? (
-                <>
-                  <p className="text-lg mb-2">아직 블록이 없어요</p>
-                  <p className="text-sm">Enter를 눌러 새 블록을 만들어보세요</p>
-                </>
-              ) : viewType === "today" ? (
-                <>
-                  <p className="text-lg mb-2">오늘 할 일이 없어요</p>
-                  <p className="text-sm">블록에 오늘 날짜를 추가해보세요</p>
-                </>
-              ) : viewType === "todo" ? (
-                <>
-                  <p className="text-lg mb-2">할일이 없어요</p>
-                  <p className="text-sm">블록에 체크박스를 추가해보세요</p>
-                </>
-              ) : viewType === "tag" ? (
+              {viewType === "tag" ? (
                 <>
                   <p className="text-lg mb-2">이 태그의 블록이 없어요</p>
                   <p className="text-sm">블록에 태그를 추가해보세요</p>
                 </>
-              ) : (
+              ) : viewType === "custom" ? (
+                <>
+                  <p className="text-lg mb-2">이 뷰에 표시할 블록이 없어요</p>
+                  <p className="text-sm">블록에 해당 속성을 추가해보세요</p>
+                </>
+              ) : viewType === "calendar" ? (
                 <>
                   <p className="text-lg mb-2">이 날짜의 블록이 없어요</p>
                   <p className="text-sm">블록에 날짜를 추가해보세요</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg mb-2">아직 블록이 없어요</p>
+                  <p className="text-sm">Enter를 눌러 새 블록을 만들어보세요</p>
                 </>
               )}
             </div>

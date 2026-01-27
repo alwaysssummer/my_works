@@ -1,26 +1,36 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { View, ViewType } from "@/types/view";
 import { Block } from "@/types/block";
+import { CustomView } from "@/types/customView";
 
 export function useView() {
-  const [view, setView] = useState<View>({ type: "all" });
+  const [view, setView] = useState<View>({ type: "dashboard" });
 
   // 뷰 변경
-  const changeView = useCallback((type: ViewType, tagId?: string) => {
-    setView({ type, tagId });
-  }, []);
+  const changeView = useCallback(
+    (type: ViewType, tagId?: string, customViewId?: string) => {
+      setView({ type, tagId, customViewId });
+    },
+    []
+  );
 
   // 캘린더 날짜 선택
   const selectDate = useCallback((date: string) => {
     setView({ type: "calendar", date });
   }, []);
 
+  // 커스텀 뷰 선택
+  const selectCustomView = useCallback((customViewId: string) => {
+    setView({ type: "custom", customViewId });
+  }, []);
+
   return {
     view,
     changeView,
     selectDate,
+    selectCustomView,
   };
 }
 
@@ -28,40 +38,12 @@ export function useView() {
 export function filterBlocksByView(
   blocks: Block[],
   view: View,
-  getTagsByIds: (ids: string[]) => { id: string; name: string }[]
+  getTagsByIds: (ids: string[]) => { id: string; name: string }[],
+  customViews?: CustomView[]
 ): Block[] {
-  const today = new Date().toISOString().split("T")[0];
-
   switch (view.type) {
     case "all":
       return blocks;
-
-    case "today":
-      // 오늘 날짜인 블록 + 미완료 체크박스 블록
-      return blocks.filter((block) => {
-        const dateProperty = block.properties.find((p) => p.propertyId === "date");
-        const checkboxProperty = block.properties.find((p) => p.propertyId === "checkbox");
-
-        // 오늘 날짜인 블록
-        if (dateProperty?.value.type === "date" && dateProperty.value.date === today) {
-          return true;
-        }
-
-        // 미완료 체크박스가 있고, 날짜가 오늘 이전인 블록 (오버듀)
-        if (checkboxProperty?.value.type === "checkbox" && !checkboxProperty.value.checked) {
-          if (dateProperty?.value.type === "date" && dateProperty.value.date <= today) {
-            return true;
-          }
-        }
-
-        return false;
-      });
-
-    case "todo":
-      // 체크박스가 있는 블록
-      return blocks.filter((block) =>
-        block.properties.some((p) => p.propertyId === "checkbox")
-      );
 
     case "tag":
       // 특정 태그가 있는 블록
@@ -86,6 +68,18 @@ export function filterBlocksByView(
         const dateProperty = block.properties.find((p) => p.propertyId === "date");
         return dateProperty?.value.type === "date" && dateProperty.value.date === view.date;
       });
+
+    case "custom":
+      // 커스텀 뷰: 지정된 속성 중 하나라도 있으면 표시 (OR 조건)
+      if (!view.customViewId || !customViews) return blocks;
+      const customView = customViews.find((v) => v.id === view.customViewId);
+      if (!customView || customView.propertyIds.length === 0) return blocks;
+
+      return blocks.filter((block) =>
+        customView.propertyIds.some((propId) =>
+          block.properties.some((p) => p.propertyId === propId)
+        )
+      );
 
     default:
       return blocks;

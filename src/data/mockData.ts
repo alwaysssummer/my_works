@@ -47,12 +47,14 @@ export const mockBlockTypes: BlockType[] = [
 
 // 블록 목업
 export const mockBlocks: Block[] = [
-  // 오늘 할일들
+  // 포커스 열 - 오늘 집중할 것
   {
     id: "block-1",
     content: "<p>김민준 수능특강 3강 복습 확인</p>",
     indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "focus",
     properties: [
       { propertyId: "checkbox", value: { type: "checkbox", checked: false } },
       { propertyId: "date", value: { type: "date", date: today } },
@@ -63,23 +65,12 @@ export const mockBlocks: Block[] = [
     updatedAt: new Date(),
   },
   {
-    id: "block-2",
-    content: "<p>이서연 토익 모의고사 채점</p>",
-    indent: 0,
-    isCollapsed: false,
-    properties: [
-      { propertyId: "checkbox", value: { type: "checkbox", checked: true } },
-      { propertyId: "date", value: { type: "date", date: today } },
-      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-6"] } },
-    ],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
     id: "block-3",
     content: "<p>중등부 단어 시험지 출력</p>",
     indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "focus",
     properties: [
       { propertyId: "checkbox", value: { type: "checkbox", checked: false } },
       { propertyId: "date", value: { type: "date", date: today } },
@@ -90,21 +81,29 @@ export const mockBlocks: Block[] = [
     updatedAt: new Date(),
   },
 
-  // 학생 정보
+  // 대기 열 - 분류된 블록들
   {
-    id: "block-10",
-    content: "<h2>학생 목록</h2>",
+    id: "block-2",
+    content: "<p>이서연 토익 모의고사 채점</p>",
     indent: 0,
     isCollapsed: false,
-    properties: [],
+    isPinned: false,
+    column: "queue",
+    properties: [
+      { propertyId: "checkbox", value: { type: "checkbox", checked: true } },
+      { propertyId: "date", value: { type: "date", date: today } },
+      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-6"] } },
+    ],
     createdAt: new Date(),
     updatedAt: new Date(),
   },
   {
     id: "block-11",
     content: "<p>김민준 (고3)</p>",
-    indent: 1,
+    indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "queue",
     properties: [
       { propertyId: "contact", value: { type: "contact", phone: "010-1234-5678", email: "parent1@email.com" } },
       { propertyId: "tag", value: { type: "tag", tagIds: ["tag-4"] } },
@@ -116,8 +115,10 @@ export const mockBlocks: Block[] = [
   {
     id: "block-12",
     content: "<p>이서연 (직장인)</p>",
-    indent: 1,
+    indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "queue",
     properties: [
       { propertyId: "contact", value: { type: "contact", phone: "010-2345-6789", email: "seoyeon@company.com" } },
       { propertyId: "tag", value: { type: "tag", tagIds: ["tag-6"] } },
@@ -127,50 +128,15 @@ export const mockBlocks: Block[] = [
     updatedAt: new Date(),
   },
   {
-    id: "block-13",
-    content: "<p>박지호 (중2)</p>",
-    indent: 1,
-    isCollapsed: false,
-    properties: [
-      { propertyId: "contact", value: { type: "contact", phone: "010-3456-7890", email: "" } },
-      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-5"] } },
-      { propertyId: "memo", value: { type: "memo", text: "내신 대비 / 매주 월수금 5시 / 단어 암기 필요" } },
-    ],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "block-14",
-    content: "<p>최유나 (고1)</p>",
-    indent: 1,
-    isCollapsed: false,
-    properties: [
-      { propertyId: "contact", value: { type: "contact", phone: "010-4567-8901", email: "yuna_mom@email.com" } },
-      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-4"] } },
-      { propertyId: "memo", value: { type: "memo", text: "영어 기초 / 매주 화목 5시 / 독해력 향상 중" } },
-    ],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-
-  // 이번주 수업 일정
-  {
-    id: "block-20",
-    content: "<h2>이번주 수업</h2>",
-    indent: 0,
-    isCollapsed: false,
-    properties: [],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
     id: "block-21",
     content: "<p>박지호 - 중등 문법 Unit 5</p>",
-    indent: 1,
+    indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "queue",
     properties: [
       { propertyId: "date", value: { type: "date", date: today } },
-      { propertyId: "repeat", value: { type: "repeat", frequency: "weekly", dayOfWeek: 1 } },
+      { propertyId: "repeat", value: { type: "repeat", config: { type: "weekly", interval: 1, weekdays: [1] } } },
       { propertyId: "tag", value: { type: "tag", tagIds: ["tag-1", "tag-5"] } },
     ],
     createdAt: new Date(),
@@ -179,45 +145,25 @@ export const mockBlocks: Block[] = [
   {
     id: "block-22",
     content: "<p>김민준 - 수능특강 4강</p>",
-    indent: 1,
+    indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "queue",
     properties: [
       { propertyId: "date", value: { type: "date", date: tomorrow } },
-      { propertyId: "repeat", value: { type: "repeat", frequency: "weekly", dayOfWeek: 2 } },
+      { propertyId: "repeat", value: { type: "repeat", config: { type: "weekly", interval: 1, weekdays: [2] } } },
       { propertyId: "tag", value: { type: "tag", tagIds: ["tag-1", "tag-4"] } },
     ],
     createdAt: new Date(),
     updatedAt: new Date(),
   },
   {
-    id: "block-23",
-    content: "<p>이서연 - 토익 RC Part 7 연습</p>",
-    indent: 1,
-    isCollapsed: false,
-    properties: [
-      { propertyId: "date", value: { type: "date", date: nextWeek } },
-      { propertyId: "repeat", value: { type: "repeat", frequency: "weekly", dayOfWeek: 6 } },
-      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-1", "tag-6"] } },
-    ],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-
-  // 준비할 것
-  {
-    id: "block-30",
-    content: "<h2>준비할 자료</h2>",
-    indent: 0,
-    isCollapsed: false,
-    properties: [],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
     id: "block-31",
     content: "<p>고등부 모의고사 프린트 준비</p>",
-    indent: 1,
+    indent: 0,
     isCollapsed: false,
+    isPinned: false,
+    column: "queue",
     properties: [
       { propertyId: "checkbox", value: { type: "checkbox", checked: false } },
       { propertyId: "date", value: { type: "date", date: tomorrow } },
@@ -226,28 +172,38 @@ export const mockBlocks: Block[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
   },
+
+  // 수집 열 - 새로 수집된 것
   {
-    id: "block-32",
-    content: "<p>토익 단어장 업데이트</p>",
-    indent: 1,
+    id: "block-inbox-1",
+    content: "<p>새 학생 상담 문의 전화 옴</p>",
+    indent: 0,
     isCollapsed: false,
-    properties: [
-      { propertyId: "checkbox", value: { type: "checkbox", checked: false } },
-      { propertyId: "priority", value: { type: "priority", level: "low" } },
-      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-6"] } },
-    ],
+    isPinned: false,
+    column: "inbox",
+    properties: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   },
   {
-    id: "block-33",
-    content: "<p>중등부 문법 정리 노트 만들기</p>",
-    indent: 1,
+    id: "block-inbox-2",
+    content: "<p>토익 교재 새 버전 출시됨</p>",
+    indent: 0,
     isCollapsed: false,
-    properties: [
-      { propertyId: "checkbox", value: { type: "checkbox", checked: true } },
-      { propertyId: "tag", value: { type: "tag", tagIds: ["tag-5"] } },
-    ],
+    isPinned: false,
+    column: "inbox",
+    properties: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "block-inbox-3",
+    content: "<p>다음 주 수업 시간 변경 요청</p>",
+    indent: 0,
+    isCollapsed: false,
+    isPinned: false,
+    column: "inbox",
+    properties: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   },

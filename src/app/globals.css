@@ -223,3 +223,108 @@
 .tiptap s {
   text-decoration: line-through;
 }
+
+/* Tiptap Table Styles */
+.tiptap table,
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  table-layout: fixed;
+  overflow: hidden;
+}
+
+.tiptap th,
+.tiptap td,
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  position: relative;
+  min-width: 80px;
+}
+
+.dark .tiptap th,
+.dark .tiptap td,
+.dark .ProseMirror th,
+.dark .ProseMirror td {
+  border-color: #374151;
+}
+
+.tiptap th,
+.ProseMirror th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.dark .tiptap th,
+.dark .ProseMirror th {
+  background: #1f2937;
+}
+
+.tiptap td > *,
+.tiptap th > *,
+.ProseMirror td > *,
+.ProseMirror th > * {
+  margin: 0;
+}
+
+/* Table resize handle */
+.tiptap .column-resize-handle,
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: #3b82f6;
+  cursor: col-resize;
+  z-index: 20;
+}
+
+.tiptap .tableWrapper,
+.ProseMirror .tableWrapper {
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+/* Selected cell */
+.tiptap .selectedCell,
+.ProseMirror .selectedCell {
+  background: #dbeafe;
+}
+
+.dark .tiptap .selectedCell,
+.dark .ProseMirror .selectedCell {
+  background: #1e3a5f;
+}
+
+/* NoteView (prose) table styles */
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.dark .prose th,
+.dark .prose td {
+  border-color: #374151;
+}
+
+.prose th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.dark .prose th {
+  background: #1f2937;
+}

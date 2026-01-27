@@ -10,7 +10,9 @@ export type PropertyType =
   | "repeat"
   | "priority"
   | "contact"
-  | "memo";
+  | "memo"
+  | "urgent" // TOP 3 긴급 할일
+  | "duration"; // 수업 시간 (분)
 
 // 속성 정의
 export interface PropertyDefinition {
@@ -44,7 +46,7 @@ export interface RepeatConfig {
 // 속성 값 타입
 export type PropertyValue =
   | { type: "checkbox"; checked: boolean }
-  | { type: "date"; date: string; time?: string }
+  | { type: "date"; date: string; endDate?: string; time?: string; endTime?: string }
   | { type: "tag"; tagIds: string[] }
   | { type: "text"; text: string }
   | { type: "number"; value: number }
@@ -53,7 +55,9 @@ export type PropertyValue =
   | { type: "repeat"; config: RepeatConfig | null }
   | { type: "priority"; level: PriorityLevel }
   | { type: "contact"; phone?: string; email?: string }
-  | { type: "memo"; text: string };
+  | { type: "memo"; text: string }
+  | { type: "urgent"; addedAt: string; slotIndex: number } // TOP 3 추가된 날짜, 슬롯 위치 (0, 1, 2)
+  | { type: "duration"; minutes: number }; // 수업 시간 (분)
 
 // 기본 제공 속성
 export const DEFAULT_PROPERTIES: PropertyDefinition[] = [
@@ -104,6 +108,18 @@ export const DEFAULT_PROPERTIES: PropertyDefinition[] = [
     name: "메모",
     type: "memo",
     icon: "📝",
+  },
+  {
+    id: "urgent",
+    name: "긴급",
+    type: "urgent",
+    icon: "🔥",
+  },
+  {
+    id: "duration",
+    name: "수업 시간",
+    type: "duration",
+    icon: "⏱️",
   },
 ];
 
@@ -174,5 +190,9 @@ export function createPropertyValue(type: PropertyType): PropertyValue {
       return { type: "contact" };
     case "memo":
       return { type: "memo", text: "" };
+    case "urgent":
+      return { type: "urgent", addedAt: new Date().toISOString().split("T")[0], slotIndex: 0 };
+    case "duration":
+      return { type: "duration", minutes: 50 }; // 기본 50분
   }
 }
