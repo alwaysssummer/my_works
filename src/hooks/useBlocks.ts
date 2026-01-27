@@ -81,9 +81,9 @@ export function useBlocks() {
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSyncRef = useRef<Block[] | null>(null);
 
-  // Supabase에 블록 동기화 (debounced)
-  const syncToSupabase = useCallback(async (blocksToSync: Block[]) => {
-    if (!useSupabase) return;
+  // Supabase에 블록 동기화
+  const syncToSupabase = useCallback(async (blocksToSync: Block[], force = false) => {
+    if (!useSupabase && !force) return;
 
     try {
       // 기존 블록 삭제 후 새로 삽입 (upsert 대신 - 순서 유지를 위해)
@@ -131,6 +131,8 @@ export function useBlocks() {
   // 초기 데이터 로드
   useEffect(() => {
     async function loadData() {
+      let shouldUseSupabase = false;
+
       // 먼저 Supabase에서 시도
       try {
         const { data, error } = await supabase
@@ -141,6 +143,7 @@ export function useBlocks() {
 
         if (!error && data && data.length > 0) {
           console.log("Supabase에서 블록 로드:", data.length);
+          shouldUseSupabase = true;
           setUseSupabase(true);
 
           let loadedBlocks = data.map(dbToBlock);
@@ -195,6 +198,7 @@ export function useBlocks() {
         // Supabase 테이블이 있지만 비어있으면 Supabase 사용
         if (!error) {
           console.log("Supabase 테이블 연결됨 (빈 상태)");
+          shouldUseSupabase = true;
           setUseSupabase(true);
         }
       } catch (err) {
@@ -287,17 +291,28 @@ export function useBlocks() {
             setBlocks(loadedBlocks);
 
             // Supabase가 연결되어 있으면 로컬 데이터를 Supabase에 마이그레이션
-            if (useSupabase) {
-              syncToSupabase(loadedBlocks);
+            if (shouldUseSupabase) {
+              console.log("로컬 데이터를 Supabase로 마이그레이션:", loadedBlocks.length);
+              syncToSupabase(loadedBlocks, true);
             }
           } else {
             setBlocks(mockBlocks);
+            if (shouldUseSupabase) {
+              console.log("목업 데이터를 Supabase로 마이그레이션");
+              syncToSupabase(mockBlocks, true);
+            }
           }
         } catch {
           setBlocks(mockBlocks);
+          if (shouldUseSupabase) {
+            syncToSupabase(mockBlocks, true);
+          }
         }
       } else {
         setBlocks(mockBlocks);
+        if (shouldUseSupabase) {
+          syncToSupabase(mockBlocks, true);
+        }
       }
       setIsLoaded(true);
     }
