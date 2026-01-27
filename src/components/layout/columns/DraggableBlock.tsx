@@ -99,7 +99,7 @@ export function DraggableBlock({
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {dateValue && (
             <span className="text-xs text-muted-foreground">
-              📅 {dateValue}
+              ◇ {dateValue}
             </span>
           )}
           {blockTags.slice(0, 2).map((tag) => (
@@ -121,7 +121,7 @@ export function DraggableBlock({
 
       {/* 고정 표시 */}
       {block.isPinned && (
-        <div className="absolute -top-1 -right-1 text-xs">📌</div>
+        <div className="absolute -top-1 -right-1 text-xs">•</div>
       )}
     </div>
   );

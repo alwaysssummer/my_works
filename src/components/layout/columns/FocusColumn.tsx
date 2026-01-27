@@ -125,7 +125,7 @@ export function FocusColumn({
       {/* 헤더 */}
       <div className="p-4 border-b border-border">
         <h2 className="font-semibold text-sm flex items-center gap-2">
-          <span className="text-lg">🎯</span>
+          <span className="text-lg">◉</span>
           포커스
           <span className="text-xs text-muted-foreground font-normal">
             ({blocks.length})

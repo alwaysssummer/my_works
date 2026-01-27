@@ -186,7 +186,7 @@ export function PropertyPanel({
         {/* 체크박스 속성 */}
         {hasCheckbox && (
           <PropertySection
-            icon="☐"
+            icon="□"
             title="체크박스"
             onRemove={() => onRemoveProperty("checkbox")}
           >
@@ -217,7 +217,7 @@ export function PropertyPanel({
         {/* 날짜 속성 */}
         {hasDate && (
           <PropertySection
-            icon="📅"
+            icon="◇"
             title="날짜"
             onRemove={() => onRemoveProperty("date")}
           >
@@ -233,7 +233,7 @@ export function PropertyPanel({
         {/* 우선순위 속성 */}
         {hasPriority && (
           <PropertySection
-            icon="⚡"
+            icon="!"
             title="우선순위"
             onRemove={() => onRemoveProperty("priority")}
           >
@@ -263,7 +263,7 @@ export function PropertyPanel({
         {/* 반복 속성 */}
         {hasRepeat && (
           <PropertySection
-            icon="🔄"
+            icon="↻"
             title="반복"
             onRemove={() => onRemoveProperty("repeat")}
           >
@@ -274,7 +274,7 @@ export function PropertyPanel({
         {/* 태그 속성 */}
         {hasTag && (
           <PropertySection
-            icon="🏷️"
+            icon="#"
             title="태그"
             onRemove={() => onRemoveProperty("tag")}
           >
@@ -293,7 +293,7 @@ export function PropertyPanel({
         {/* 사람 연결 속성 */}
         {hasPerson && (
           <PropertySection
-            icon="👤"
+            icon="○"
             title="사람 연결"
             onRemove={() => onRemoveProperty("person")}
           >
@@ -309,7 +309,7 @@ export function PropertyPanel({
         {/* 연락처 속성 */}
         {hasContact && (
           <PropertySection
-            icon="📞"
+            icon="☎"
             title="연락처"
             onRemove={() => onRemoveProperty("contact")}
           >
@@ -335,7 +335,7 @@ export function PropertyPanel({
         {/* 메모 속성 */}
         {hasMemo && (
           <PropertySection
-            icon="📝"
+            icon="≡"
             title="메모"
             onRemove={() => onRemoveProperty("memo")}
           >

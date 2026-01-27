@@ -5,6 +5,176 @@ import { Block } from "@/types/block";
 import { groupBlocksByDate } from "@/hooks/useView";
 import { X, Plus, Clock, User, RotateCcw } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { formatDate as formatDateUtil } from "@/lib/dateFormat";
+
+// 일정 추가 모달 컴포넌트
+function CalendarAddModal({
+  date,
+  content,
+  studentId,
+  time,
+  isRepeat,
+  students,
+  onContentChange,
+  onStudentIdChange,
+  onTimeChange,
+  onIsRepeatChange,
+  onSubmit,
+  onClose,
+  formatDate,
+}: {
+  date: string;
+  content: string;
+  studentId: string;
+  time: string;
+  isRepeat: boolean;
+  students: StudentInfo[];
+  onContentChange: (v: string) => void;
+  onStudentIdChange: (v: string) => void;
+  onTimeChange: (v: string) => void;
+  onIsRepeatChange: (v: boolean) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+  formatDate: (d: string) => string;
+}) {
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    enabled: true,
+    onEscape: onClose,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calendar-add-modal-title"
+    >
+      <div
+        ref={containerRef}
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h3 id="calendar-add-modal-title" className="font-semibold">
+            <span aria-hidden="true">◇</span> {formatDate(date)}
+          </h3>
+          <button
+            onClick={onClose}
+            aria-label="모달 닫기"
+            className="p-1 rounded-full hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="w-5 h-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* 내용 입력 */}
+          <div>
+            <label htmlFor="cal-content" className="block text-sm font-medium mb-1">내용</label>
+            <input
+              id="cal-content"
+              type="text"
+              value={content}
+              onChange={(e) => onContentChange(e.target.value)}
+              placeholder="일정 또는 수업명 입력..."
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                  onSubmit();
+                }
+              }}
+            />
+          </div>
+
+          {/* 학생 선택 */}
+          <div>
+            <label htmlFor="cal-student" className="block text-sm font-medium mb-1 flex items-center gap-1">
+              <User className="w-4 h-4" aria-hidden="true" />
+              학생 (선택하면 수업)
+            </label>
+            <select
+              id="cal-student"
+              value={studentId}
+              onChange={(e) => onStudentIdChange(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">선택 안함 (일반 일정)</option>
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {studentId && (
+              <p className="mt-1 text-xs text-green-600" aria-live="polite">
+                → 수업으로 등록됩니다
+              </p>
+            )}
+          </div>
+
+          {/* 시간 선택 */}
+          <div>
+            <label htmlFor="cal-time" className="block text-sm font-medium mb-1 flex items-center gap-1">
+              <Clock className="w-4 h-4" aria-hidden="true" />
+              시간 (선택)
+            </label>
+            <input
+              id="cal-time"
+              type="time"
+              value={time}
+              onChange={(e) => onTimeChange(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+
+          {/* 반복 설정 (학생 선택 시에만) */}
+          {studentId && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  id="cal-repeat"
+                  type="checkbox"
+                  checked={isRepeat}
+                  onChange={(e) => onIsRepeatChange(e.target.checked)}
+                  className="w-4 h-4 rounded border-border focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <span className="text-sm flex items-center gap-1">
+                  <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                  매주 반복 (정규 수업)
+                </span>
+              </label>
+              {isRepeat && (
+                <p className="mt-1 text-xs text-blue-600 ml-6" aria-live="polite">
+                  → 정규 수업으로 등록됩니다
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-border flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            취소
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={!content.trim()}
+            className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            추가
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface StudentInfo {
   id: string;
@@ -173,10 +343,9 @@ export function CalendarView({
     return div.textContent || div.innerText || "";
   };
 
-  // 날짜 포맷
+  // 날짜 포맷 (Intl API 사용)
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+    return formatDateUtil(dateStr, { month: "long", day: "numeric" });
   };
 
   const monthNames = [
@@ -192,26 +361,29 @@ export function CalendarView({
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={goToPrevMonth}
-          className="p-2 hover:bg-accent rounded"
+          aria-label="이전 달"
+          className="p-2 hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
         >
-          ◀
+          <span aria-hidden="true">◀</span>
         </button>
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-lg font-semibold" aria-live="polite">
             {currentMonth.year}년 {monthNames[currentMonth.month]}
           </h2>
           <button
             onClick={goToToday}
-            className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded"
+            aria-label="오늘 날짜로 이동"
+            className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded focus-visible:ring-2 focus-visible:ring-ring"
           >
             오늘
           </button>
         </div>
         <button
           onClick={goToNextMonth}
-          className="p-2 hover:bg-accent rounded"
+          aria-label="다음 달"
+          className="p-2 hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
         >
-          ▶
+          <span aria-hidden="true">▶</span>
         </button>
       </div>
 
@@ -230,7 +402,7 @@ export function CalendarView({
       </div>
 
       {/* 날짜 그리드 */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1" role="grid" aria-label="캘린더">
         {calendarDays.map(({ date, day, isCurrentMonth }, index) => {
           const blocksOnDate = blocksByDate[date] || [];
           const periodBlocksOnDate = getPeriodBlocksForDate(date);
@@ -240,13 +412,18 @@ export function CalendarView({
           const dayOfWeek = index % 7;
           const isSunday = dayOfWeek === 0;
           const isSaturday = dayOfWeek === 6;
+          const eventCount = blocksOnDate.length + periodBlocksOnDate.length;
 
           return (
             <button
               key={date}
               onClick={() => handleDateClick(date)}
+              role="gridcell"
+              aria-label={`${currentMonth.month + 1}월 ${day}일${isToday ? ", 오늘" : ""}${eventCount > 0 ? `, ${eventCount}개 일정` : ""}`}
+              aria-selected={isSelected}
+              aria-current={isToday ? "date" : undefined}
               className={`
-                relative p-2 h-20 rounded text-sm transition-colors
+                relative p-2 h-20 rounded text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring
                 ${isCurrentMonth ? "" : "opacity-40"}
                 ${isToday ? "ring-2 ring-primary" : ""}
                 ${isSelected ? "bg-primary text-primary-foreground" : "hover:bg-accent"}
@@ -315,125 +492,23 @@ export function CalendarView({
 
       {/* 일정 추가 모달 */}
       {showAddModal && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowAddModal(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <h3 className="font-semibold">📅 {formatDate(addModalDate)}</h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-1 rounded-full hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              {/* 내용 입력 */}
-              <div>
-                <label className="block text-sm font-medium mb-1">내용</label>
-                <input
-                  type="text"
-                  value={addContent}
-                  onChange={(e) => setAddContent(e.target.value)}
-                  placeholder="일정 또는 수업명 입력..."
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      handleAddSubmit();
-                    }
-                  }}
-                />
-              </div>
-
-              {/* 학생 선택 */}
-              <div>
-                <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-                  <User className="w-4 h-4" />
-                  학생 (선택하면 수업)
-                </label>
-                <select
-                  value={addStudentId}
-                  onChange={(e) => setAddStudentId(e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">선택 안함 (일반 일정)</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                {addStudentId && (
-                  <p className="mt-1 text-xs text-green-600">
-                    → 수업으로 등록됩니다
-                  </p>
-                )}
-              </div>
-
-              {/* 시간 선택 */}
-              <div>
-                <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-                  <Clock className="w-4 h-4" />
-                  시간 (선택)
-                </label>
-                <input
-                  type="time"
-                  value={addTime}
-                  onChange={(e) => setAddTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-
-              {/* 반복 설정 (학생 선택 시에만) */}
-              {addStudentId && (
-                <div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={addIsRepeat}
-                      onChange={(e) => setAddIsRepeat(e.target.checked)}
-                      className="w-4 h-4 rounded border-border"
-                    />
-                    <span className="text-sm flex items-center gap-1">
-                      <RotateCcw className="w-4 h-4" />
-                      매주 반복 (정규 수업)
-                    </span>
-                  </label>
-                  {addIsRepeat && (
-                    <p className="mt-1 text-xs text-blue-600 ml-6">
-                      → 정규 수업으로 등록됩니다
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-border flex gap-2">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-gray-50"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleAddSubmit}
-                disabled={!addContent.trim()}
-                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1"
-              >
-                <Plus className="w-4 h-4" />
-                추가
-              </button>
-            </div>
-          </div>
-        </div>
+        <CalendarAddModal
+          date={addModalDate}
+          content={addContent}
+          studentId={addStudentId}
+          time={addTime}
+          isRepeat={addIsRepeat}
+          students={students}
+          onContentChange={setAddContent}
+          onStudentIdChange={setAddStudentId}
+          onTimeChange={setAddTime}
+          onIsRepeatChange={setAddIsRepeat}
+          onSubmit={handleAddSubmit}
+          onClose={() => setShowAddModal(false)}
+          formatDate={formatDate}
+        />
       )}
+
     </div>
   );
 }

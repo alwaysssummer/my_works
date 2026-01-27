@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Block } from "@/types/block";
 import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface SearchModalProps {
   blocks: Block[];
@@ -20,6 +21,12 @@ export function SearchModal({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    enabled: isOpen,
+    onEscape: onClose,
+    initialFocusRef: inputRef,
+  });
 
   // 검색 결과
   const searchResults = useMemo(() => {
@@ -109,13 +116,18 @@ export function SearchModal({
     <div
       className="fixed inset-0 bg-black/50 flex items-start justify-center pt-[20vh] z-50"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="search-modal-title"
     >
       <div
+        ref={containerRef}
         className="bg-background border border-border rounded-lg shadow-2xl w-[500px] max-h-[60vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 검색 입력 */}
         <div className="p-3 border-b border-border">
+          <h2 id="search-modal-title" className="sr-only">블록 검색</h2>
           <div className="flex items-center gap-2">
             <svg
               width="16"
@@ -125,27 +137,33 @@ export function SearchModal({
               stroke="currentColor"
               strokeWidth="2"
               className="text-muted-foreground"
+              aria-hidden="true"
             >
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
             <input
               ref={inputRef}
-              type="text"
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="블록 검색..."
+              aria-label="블록 검색"
+              aria-describedby="search-results-status"
               className="flex-1 bg-transparent outline-none text-sm"
             />
-            <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded text-muted-foreground">
+            <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded text-muted-foreground" aria-hidden="true">
               ESC
             </kbd>
           </div>
         </div>
 
         {/* 검색 결과 */}
-        <div className="max-h-[400px] overflow-y-auto">
+        <div className="max-h-[400px] overflow-y-auto" role="listbox" aria-label="검색 결과">
+          <div id="search-results-status" className="sr-only" aria-live="polite">
+            {query.trim() === "" ? "검색어를 입력하세요" : searchResults.length === 0 ? "검색 결과 없음" : `${searchResults.length}개 결과`}
+          </div>
           {query.trim() === "" ? (
             <div className="p-4 text-center text-muted-foreground text-sm">
               검색어를 입력하세요
@@ -162,16 +180,18 @@ export function SearchModal({
                 return (
                   <button
                     key={block.id}
+                    role="option"
+                    aria-selected={index === selectedIndex}
                     onClick={() => {
                       onSelectBlock(block.id);
                       onClose();
                     }}
-                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 ${
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
                       index === selectedIndex ? "bg-accent" : "hover:bg-accent/50"
                     }`}
                   >
-                    <span style={{ color: parsed.color || undefined }}>
-                      {parsed.icon || "📝"}
+                    <span aria-hidden="true" style={{ color: parsed.color || undefined }}>
+                      {parsed.icon || "≡"}
                     </span>
                     <span className="flex-1 truncate">
                       {highlightQuery(title || "(빈 블록)")}

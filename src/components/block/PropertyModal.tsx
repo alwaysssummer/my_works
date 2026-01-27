@@ -202,7 +202,7 @@ export function PropertyModal({
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span>☐</span>
+                  <span>□</span>
                   <span className="font-medium">할일</span>
                 </div>
                 <button
@@ -230,7 +230,7 @@ export function PropertyModal({
           {dateProp && (
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-2">
-                <span>📅</span>
+                <span>◇</span>
                 <span className="font-medium">날짜</span>
               </div>
               {/* 빠른 선택 버튼 */}
@@ -268,7 +268,7 @@ export function PropertyModal({
           {priorityProp && (
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-3">
-                <span>⚡</span>
+                <span>!</span>
                 <span className="font-medium">우선순위</span>
               </div>
               <div className="flex gap-2">
@@ -304,7 +304,7 @@ export function PropertyModal({
           {tagProp && (
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-3">
-                <span>🏷️</span>
+                <span>#</span>
                 <span className="font-medium">태그</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -362,7 +362,7 @@ export function PropertyModal({
           {memoProp && (
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-2">
-                <span>📝</span>
+                <span>≡</span>
                 <span className="font-medium">메모</span>
               </div>
               <textarea
@@ -384,7 +384,7 @@ export function PropertyModal({
           {contactProp && (
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-3">
-                <span>📞</span>
+                <span>☎</span>
                 <span className="font-medium">연락처</span>
               </div>
               <div className="space-y-2">
@@ -422,7 +422,7 @@ export function PropertyModal({
           {repeatProp && (
             <div className="p-4 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-3">
-                <span>🔄</span>
+                <span>↻</span>
                 <span className="font-medium">반복</span>
               </div>
               <div className="space-y-3">

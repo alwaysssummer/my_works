@@ -540,7 +540,9 @@ export function BlockItem({
       {isSelectionMode && (
         <button
           onClick={handleSelectionToggle}
-          className={`absolute top-2 w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${
+          aria-label={isSelected ? "선택 해제" : "블록 선택"}
+          aria-pressed={isSelected}
+          className={`absolute top-2 w-5 h-5 border-2 rounded flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
             isSelected
               ? "bg-primary border-primary text-primary-foreground"
               : "border-muted-foreground/50 hover:border-primary"
@@ -548,7 +550,7 @@ export function BlockItem({
           style={{ left: `${indentPadding - 28}px` }}
         >
           {isSelected && (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
               <path d="M5 12l5 5L20 7" />
             </svg>
           )}
@@ -558,23 +560,31 @@ export function BlockItem({
       {/* 블록 메뉴 버튼 (호버 시 표시, 선택 모드가 아닐 때만) */}
       <div
         className={`absolute left-0 top-2 transition-opacity flex items-center gap-0.5 ${
-          isSelectionMode ? "hidden" : "opacity-0 group-hover:opacity-100"
+          isSelectionMode ? "hidden" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
         }`}
         style={{ marginLeft: `${indentPadding - 24}px` }}
       >
         <button
           onClick={handleMenuClick}
-          className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent rounded"
+          aria-label="블록 메뉴 열기"
+          aria-expanded={showMenu}
+          aria-haspopup="menu"
+          className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="12" cy="6" r="2" />
             <circle cx="12" cy="12" r="2" />
             <circle cx="12" cy="18" r="2" />
           </svg>
         </button>
 
-        <div className="w-4 h-4 flex items-center justify-center text-muted-foreground cursor-grab">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <div
+          className="w-4 h-4 flex items-center justify-center text-muted-foreground cursor-grab"
+          aria-label="블록 드래그 핸들"
+          role="button"
+          tabIndex={0}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="9" cy="6" r="2" />
             <circle cx="15" cy="6" r="2" />
             <circle cx="9" cy="12" r="2" />
@@ -629,7 +639,7 @@ export function BlockItem({
               onClick={handleRemoveCheckbox}
               className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
             >
-              <span>☐</span>
+              <span>□</span>
               체크박스 제거
             </button>
           )}
@@ -640,7 +650,7 @@ export function BlockItem({
               onClick={handleRemoveDate}
               className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
             >
-              <span>📅</span>
+              <span>◇</span>
               날짜 제거
             </button>
           )}
@@ -651,7 +661,7 @@ export function BlockItem({
               onClick={handleRemoveTag}
               className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
             >
-              <span>🏷️</span>
+              <span>#</span>
               태그 제거
             </button>
           )}
@@ -662,7 +672,7 @@ export function BlockItem({
               onClick={handleOpenPanel}
               className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
             >
-              <span>⚙️</span>
+              <span>⚙</span>
               속성 편집
             </button>
           )}
@@ -676,7 +686,7 @@ export function BlockItem({
             }}
             className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
           >
-            <span>{block.isPinned ? "📌" : "📍"}</span>
+            <span>{block.isPinned ? "•" : "◦"}</span>
             {block.isPinned ? "고정 해제" : "상단에 고정"}
           </button>
 
@@ -692,7 +702,7 @@ export function BlockItem({
                 className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center justify-between"
               >
                 <span className="flex items-center gap-2">
-                  <span>📋</span>
+                  <span>☰</span>
                   타입 적용
                 </span>
                 <span>▶</span>
@@ -745,7 +755,7 @@ export function BlockItem({
           onClick={() => onTogglePin?.(block.id)}
           title="고정 해제"
         >
-          📌
+          •
         </span>
       )}
 
@@ -753,7 +763,9 @@ export function BlockItem({
       {hasChildren && (
         <button
           onClick={handleToggle}
-          className="absolute top-2 w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded opacity-60 hover:opacity-100"
+          aria-label={block.isCollapsed ? "하위 블록 펼치기" : "하위 블록 접기"}
+          aria-expanded={!block.isCollapsed}
+          className="absolute top-2 w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded opacity-60 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:opacity-100"
           style={{ left: `${indentPadding - 20}px` }}
         >
           <svg
@@ -762,6 +774,7 @@ export function BlockItem({
             viewBox="0 0 24 24"
             fill="currentColor"
             className={`transition-transform ${block.isCollapsed ? "" : "rotate-90"}`}
+            aria-hidden="true"
           >
             <path d="M8 5l8 7-8 7V5z" />
           </svg>
@@ -797,14 +810,16 @@ export function BlockItem({
         {hasCheckbox && (
           <button
             onClick={handleCheckboxToggle}
-            className={`mt-0.5 w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 ${
+            aria-label={isChecked ? "완료 해제" : "완료 처리"}
+            aria-pressed={isChecked}
+            className={`mt-0.5 w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 focus-visible:ring-2 focus-visible:ring-ring ${
               isChecked
                 ? "bg-primary border-primary text-primary-foreground"
                 : "border-border hover:border-foreground"
             }`}
           >
             {isChecked && (
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
                 <path d="M5 12l5 5L20 7" />
               </svg>
             )}
@@ -819,7 +834,7 @@ export function BlockItem({
         {/* 날짜 표시 */}
         {hasDate && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <span className="text-xs text-muted-foreground">📅</span>
+            <span className="text-xs text-muted-foreground">◇</span>
             <input
               type="date"
               value={dateValue}
@@ -835,7 +850,7 @@ export function BlockItem({
             className="text-xs text-muted-foreground flex items-center gap-0.5 flex-shrink-0"
             title={`${REPEAT_LABELS[repeatConfig.type]} (${repeatConfig.interval > 1 ? `${repeatConfig.interval}회마다` : ""})`}
           >
-            🔄
+            ↻
             <span className="text-[10px]">{REPEAT_LABELS[repeatConfig.type]}</span>
           </span>
         )}

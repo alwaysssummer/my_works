@@ -21,12 +21,12 @@ export const VIEW_LABELS: Record<ViewType, string> = {
 };
 
 export const VIEW_ICONS: Record<ViewType, string> = {
-  dashboard: "🏠",
-  all: "📋",
-  todo: "☑️",
-  tag: "🏷️",
-  calendar: "📅",
-  weekly: "📆",
-  custom: "📁",
-  students: "👤",
+  dashboard: "⌂",
+  all: "☰",
+  todo: "☑",
+  tag: "#",
+  calendar: "◇",
+  weekly: "▦",
+  custom: "▤",
+  students: "○",
 };

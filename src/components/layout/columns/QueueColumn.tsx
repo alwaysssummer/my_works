@@ -53,10 +53,10 @@ export function QueueColumn({
   }, [blocks]);
 
   const sections = [
-    { key: "students", label: "👤 학생", blocks: groupedBlocks.students },
-    { key: "classes", label: "📚 수업", blocks: groupedBlocks.classes },
-    { key: "todos", label: "✅ 할일", blocks: groupedBlocks.todos },
-    { key: "others", label: "📝 기타", blocks: groupedBlocks.others },
+    { key: "students", label: "○ 학생", blocks: groupedBlocks.students },
+    { key: "classes", label: "▢ 수업", blocks: groupedBlocks.classes },
+    { key: "todos", label: "☑ 할일", blocks: groupedBlocks.todos },
+    { key: "others", label: "≡ 기타", blocks: groupedBlocks.others },
   ].filter((section) => section.blocks.length > 0);
 
   return (
@@ -69,7 +69,7 @@ export function QueueColumn({
       {/* 헤더 */}
       <div className="p-4 border-b border-border">
         <h2 className="font-semibold text-sm flex items-center gap-2">
-          <span className="text-lg">📋</span>
+          <span className="text-lg">☰</span>
           대기
           <span className="text-xs text-muted-foreground font-normal">
             ({blocks.length})

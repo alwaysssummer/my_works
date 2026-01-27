@@ -11,8 +11,8 @@ export interface CustomView {
 
 // 뷰 아이콘 옵션
 export const VIEW_ICONS = [
-  "📋", "✅", "☀️", "👤", "📚", "📝", "📅", "🎯",
-  "💼", "🏠", "💡", "🔔", "⭐", "❤️", "🚀", "📌",
+  "☰", "☑", "○", "◎", "▢", "≡", "◇", "◉",
+  "▣", "⌂", "◈", "△", "☆", "♡", "▲", "•",
 ];
 
 // 뷰 색상 옵션
@@ -32,14 +32,14 @@ export const DEFAULT_CUSTOM_VIEWS: Omit<CustomView, "createdAt">[] = [
   {
     id: "view-todo",
     name: "할일",
-    icon: "✅",
+    icon: "☑",
     color: "#f59e0b",
     propertyIds: ["checkbox"],
   },
   {
     id: "view-schedule",
     name: "일정",
-    icon: "📅",
+    icon: "◇",
     color: "#3b82f6",
     propertyIds: ["date"],
   },

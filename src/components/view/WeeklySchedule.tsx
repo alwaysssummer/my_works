@@ -258,7 +258,7 @@ export function WeeklySchedule({
       {/* 헤더 */}
       <header className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-lg">📆</span>
+          <span className="text-lg">▦</span>
           <span className="font-medium">주간 시간표</span>
         </div>
         <div className="flex items-center gap-2">
@@ -430,7 +430,7 @@ export function WeeklySchedule({
                           <div className="flex items-center gap-1">
                             {/* 정규 수업 표시 */}
                             {isLesson && isRegular && (
-                              <span className="text-[10px]" title="정규 수업">🔄</span>
+                              <span className="text-[10px]" title="정규 수업">↻</span>
                             )}
                             <div
                               className="text-xs font-medium truncate flex-1"

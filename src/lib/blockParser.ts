@@ -6,15 +6,15 @@
 
 // 미리 정의된 카테고리 (첫 단어로 인식)
 export const BLOCK_CATEGORIES = {
-  학생: { icon: "👤", color: "#3b82f6" },
-  수업: { icon: "📚", color: "#22c55e" },
-  행사: { icon: "🎉", color: "#a855f7" },
-  회의: { icon: "🤝", color: "#f97316" },
-  메모: { icon: "📝", color: "#6b7280" },
-  할일: { icon: "☑️", color: "#ef4444" },
-  일정: { icon: "📅", color: "#0ea5e9" },
-  프로젝트: { icon: "📁", color: "#8b5cf6" },
-  아이디어: { icon: "💡", color: "#eab308" },
+  학생: { icon: "○", color: "#3b82f6" },
+  수업: { icon: "▢", color: "#22c55e" },
+  행사: { icon: "◇", color: "#a855f7" },
+  회의: { icon: "⇌", color: "#f97316" },
+  메모: { icon: "≡", color: "#6b7280" },
+  할일: { icon: "☑", color: "#ef4444" },
+  일정: { icon: "◇", color: "#0ea5e9" },
+  프로젝트: { icon: "▤", color: "#8b5cf6" },
+  아이디어: { icon: "◈", color: "#eab308" },
 } as const;
 
 export type BlockCategory = keyof typeof BLOCK_CATEGORIES;

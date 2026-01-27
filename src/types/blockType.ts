@@ -12,19 +12,19 @@ export interface BlockType {
 export const DEFAULT_BLOCK_TYPES: Omit<BlockType, "id" | "createdAt">[] = [
   {
     name: "학생",
-    icon: "👤",
+    icon: "○",
     color: "#3b82f6",
     propertyIds: ["contact", "tag", "memo"],
   },
   {
     name: "수업",
-    icon: "📚",
+    icon: "▢",
     color: "#22c55e",
     propertyIds: ["date", "checkbox", "person"],
   },
   {
     name: "루틴",
-    icon: "🔄",
+    icon: "↻",
     color: "#f97316",
     propertyIds: ["checkbox", "repeat"],
   },
@@ -44,6 +44,6 @@ export const TYPE_COLORS = [
 
 // 타입 아이콘 옵션
 export const TYPE_ICONS = [
-  "👤", "👥", "📚", "📝", "📅", "🔄", "⭐", "💼",
-  "🏠", "💡", "🎯", "📌", "🔔", "💬", "📧", "📞",
+  "○", "◎", "▢", "≡", "◇", "↻", "☆", "▣",
+  "⌂", "◈", "◉", "•", "△", "▷", "✉", "☎",
 ];

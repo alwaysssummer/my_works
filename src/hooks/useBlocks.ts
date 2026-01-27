@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Block, BlockColumn, Top3History } from "@/types/block";
 import { BlockProperty, PropertyType, createPropertyValue, DEFAULT_PROPERTIES, LegacyBlockProperty } from "@/types/property";
-import { supabase } from "@/lib/supabase";
 import { mockBlocks } from "@/data/mockData";
 import { useBlockSelection } from "./useBlockSelection";
+import { useBlockSync } from "./useBlockSync";
 
 // 기존 propertyId를 기본 이름으로 매핑
 function getDefaultPropertyName(propertyId: string): string {
@@ -84,140 +84,77 @@ export function useBlocks() {
     clear: clearSelection,
   } = useBlockSelection();
 
-  // Supabase 동기화를 위한 debounce용 ref
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingSyncRef = useRef<Block[] | null>(null);
+  // 블록 동기화 (useBlockSync 훅 사용)
+  const {
+    syncStatus,
+    lastError: syncError,
+    isOnline,
+    isSupabaseConnected,
+    debouncedSync,
+    loadFromSupabase,
+    saveToLocalStorage,
+    loadFromLocalStorage,
+    setPrevBlocks,
+  } = useBlockSync();
 
-  // Supabase에 블록 동기화
-  const syncToSupabase = useCallback(async (blocksToSync: Block[], force = false) => {
-    if (!useSupabase && !force) return;
+  // 초기화 완료 여부 (무한 루프 방지)
+  const isInitializedRef = useRef(false);
 
-    try {
-      // 기존 블록 삭제 후 새로 삽입 (upsert 대신 - 순서 유지를 위해)
-      const { error: deleteError } = await supabase
-        .from("blocks")
-        .delete()
-        .is("user_id", null);
+  // TOP 3 만료 처리 함수
+  const processExpiredTop3 = useCallback((loadedBlocks: Block[]) => {
+    const today = new Date().toISOString().split("T")[0];
+    const expiredTop3: { id: string; content: string; completed: boolean }[] = [];
 
-      if (deleteError) {
-        console.error("Supabase 삭제 오류:", deleteError);
-        return;
+    const processedBlocks = loadedBlocks.map((block: Block) => {
+      const urgentProp = block.properties.find((p: BlockProperty) => p.propertyType === "urgent");
+      if (urgentProp?.value.type === "urgent" && urgentProp.value.addedAt < today) {
+        const checkboxProp = block.properties.find((p: BlockProperty) => p.propertyType === "checkbox");
+        const completed = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
+
+        expiredTop3.push({
+          id: block.id,
+          content: block.content,
+          completed,
+        });
+
+        return {
+          ...block,
+          properties: block.properties.filter((p: BlockProperty) => p.propertyType !== "urgent"),
+        };
       }
+      return block;
+    });
 
-      if (blocksToSync.length > 0) {
-        const dbBlocks = blocksToSync.map((block, index) => blockToDb(block, index));
-        const { error: insertError } = await supabase
-          .from("blocks")
-          .insert(dbBlocks);
+    if (expiredTop3.length > 0) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
 
-        if (insertError) {
-          console.error("Supabase 삽입 오류:", insertError.message, insertError.code, insertError.details);
-        } else {
-          console.log("Supabase 동기화 완료:", blocksToSync.length, "개 블록");
+      setTop3History((prev) => {
+        const existing = prev.find((h) => h.date === yesterdayStr);
+        if (existing) {
+          return prev.map((h) =>
+            h.date === yesterdayStr
+              ? { ...h, blocks: [...h.blocks, ...expiredTop3] }
+              : h
+          );
         }
-      }
-    } catch (err) {
-      console.error("Supabase 동기화 오류:", err);
-    }
-  }, [useSupabase]);
-
-  // debounced sync
-  const debouncedSync = useCallback((blocksToSync: Block[]) => {
-    pendingSyncRef.current = blocksToSync;
-
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
+        return [...prev, { date: yesterdayStr, blocks: expiredTop3 }];
+      });
     }
 
-    syncTimeoutRef.current = setTimeout(() => {
-      if (pendingSyncRef.current) {
-        syncToSupabase(pendingSyncRef.current);
-        pendingSyncRef.current = null;
-      }
-    }, 1000); // 1초 debounce
-  }, [syncToSupabase]);
+    return processedBlocks;
+  }, []);
 
-  // 초기 데이터 로드
+  // 초기 데이터 로드 (한 번만 실행)
   useEffect(() => {
+    // 이미 초기화되었으면 스킵
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     async function loadData() {
-      let shouldUseSupabase = false;
-
-      // 먼저 Supabase에서 시도
-      try {
-        const { data, error } = await supabase
-          .from("blocks")
-          .select("*")
-          .is("user_id", null)
-          .order("sort_order", { ascending: true });
-
-        if (!error && data && data.length > 0) {
-          console.log("Supabase에서 블록 로드:", data.length);
-          shouldUseSupabase = true;
-          setUseSupabase(true);
-
-          let loadedBlocks = data.map(dbToBlock);
-
-          // 자정 지난 TOP 3 아카이브 처리
-          const today = new Date().toISOString().split("T")[0];
-          const expiredTop3: { id: string; content: string; completed: boolean }[] = [];
-
-          loadedBlocks = loadedBlocks.map((block: Block) => {
-            const urgentProp = block.properties.find((p: BlockProperty) => p.propertyType === "urgent");
-            if (urgentProp?.value.type === "urgent" && urgentProp.value.addedAt < today) {
-              const checkboxProp = block.properties.find((p: BlockProperty) => p.propertyType === "checkbox");
-              const completed = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
-
-              expiredTop3.push({
-                id: block.id,
-                content: block.content,
-                completed,
-              });
-
-              return {
-                ...block,
-                properties: block.properties.filter((p: BlockProperty) => p.propertyType !== "urgent"),
-              };
-            }
-            return block;
-          });
-
-          if (expiredTop3.length > 0) {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split("T")[0];
-
-            setTop3History((prev) => {
-              const existing = prev.find((h) => h.date === yesterdayStr);
-              if (existing) {
-                return prev.map((h) =>
-                  h.date === yesterdayStr
-                    ? { ...h, blocks: [...h.blocks, ...expiredTop3] }
-                    : h
-                );
-              }
-              return [...prev, { date: yesterdayStr, blocks: expiredTop3 }];
-            });
-          }
-
-          setBlocks(loadedBlocks);
-          setIsLoaded(true);
-          return;
-        }
-
-        // Supabase 테이블이 있지만 비어있으면 Supabase 사용
-        if (!error) {
-          console.log("Supabase 테이블 연결됨 (빈 상태)");
-          shouldUseSupabase = true;
-          setUseSupabase(true);
-        }
-      } catch (err) {
-        console.log("Supabase 연결 실패, 로컬 스토리지 사용:", err);
-      }
-
-      // Supabase 실패 시 로컬 스토리지에서 로드
-      const saved = localStorage.getItem(STORAGE_KEY);
+      // TOP 3 히스토리 로드
       const savedHistory = localStorage.getItem(TOP3_HISTORY_KEY);
-
       if (savedHistory) {
         try {
           setTop3History(JSON.parse(savedHistory));
@@ -226,121 +163,83 @@ export function useBlocks() {
         }
       }
 
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.length > 0) {
-            let slotCounter = 0;
+      // 먼저 Supabase에서 시도 (useBlockSync 사용)
+      const supabaseBlocks = await loadFromSupabase();
 
-            let loadedBlocks = parsed.map((b: Block & { properties?: (BlockProperty | LegacyBlockProperty)[] }) => ({
-              ...b,
-              name: b.name ?? "",
-              indent: b.indent ?? 0,
-              isCollapsed: b.isCollapsed ?? false,
-              isPinned: b.isPinned ?? false,
-              column: b.column ?? "inbox",
-              properties: (b.properties ?? []).map((p: BlockProperty | LegacyBlockProperty) => {
-                let prop = migrateProperty(p);
-                if (prop.propertyType === "urgent" && prop.value.type === "urgent" && prop.value.slotIndex === undefined) {
-                  return {
-                    ...prop,
-                    value: {
-                      ...prop.value,
-                      slotIndex: slotCounter++,
-                    },
-                  };
-                }
-                return prop;
-              }),
-              createdAt: new Date(b.createdAt),
-              updatedAt: new Date(b.updatedAt),
-            }));
+      if (supabaseBlocks && supabaseBlocks.length > 0) {
+        console.log("Supabase에서 블록 로드:", supabaseBlocks.length);
+        setUseSupabase(true);
 
-            const today = new Date().toISOString().split("T")[0];
-            const expiredTop3: { id: string; content: string; completed: boolean }[] = [];
+        // 레거시 속성 마이그레이션 적용
+        const migratedBlocks = supabaseBlocks.map((block: Block) => ({
+          ...block,
+          properties: block.properties.map(migrateProperty),
+        }));
 
-            loadedBlocks = loadedBlocks.map((block: Block) => {
-              const urgentProp = block.properties.find((p: BlockProperty) => p.propertyType === "urgent");
-              if (urgentProp?.value.type === "urgent" && urgentProp.value.addedAt < today) {
-                const checkboxProp = block.properties.find((p: BlockProperty) => p.propertyType === "checkbox");
-                const completed = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
+        const processedBlocks = processExpiredTop3(migratedBlocks);
+        setBlocks(processedBlocks);
+        setPrevBlocks(processedBlocks);
+        setIsLoaded(true);
+        return;
+      }
 
-                expiredTop3.push({
-                  id: block.id,
-                  content: block.content,
-                  completed,
-                });
+      // Supabase 연결됨 (빈 상태)
+      if (supabaseBlocks !== null) {
+        console.log("Supabase 테이블 연결됨 (빈 상태)");
+        setUseSupabase(true);
+      }
 
-                return {
-                  ...block,
-                  properties: block.properties.filter((p: BlockProperty) => p.propertyType !== "urgent"),
-                };
-              }
-              return block;
-            });
+      // 로컬 스토리지에서 로드 (useBlockSync 사용)
+      const localBlocks = loadFromLocalStorage();
 
-            if (expiredTop3.length > 0) {
-              const yesterday = new Date();
-              yesterday.setDate(yesterday.getDate() - 1);
-              const yesterdayStr = yesterday.toISOString().split("T")[0];
+      if (localBlocks.length > 0) {
+        let slotCounter = 0;
 
-              setTop3History((prev) => {
-                const existing = prev.find((h) => h.date === yesterdayStr);
-                if (existing) {
-                  return prev.map((h) =>
-                    h.date === yesterdayStr
-                      ? { ...h, blocks: [...h.blocks, ...expiredTop3] }
-                      : h
-                  );
-                }
-                return [...prev, { date: yesterdayStr, blocks: expiredTop3 }];
-              });
+        let loadedBlocks = localBlocks.map((b: Block & { properties?: (BlockProperty | LegacyBlockProperty)[] }) => ({
+          ...b,
+          name: b.name ?? "",
+          indent: b.indent ?? 0,
+          isCollapsed: b.isCollapsed ?? false,
+          isPinned: b.isPinned ?? false,
+          column: b.column ?? "inbox",
+          properties: (b.properties ?? []).map((p: BlockProperty | LegacyBlockProperty) => {
+            let prop = migrateProperty(p);
+            if (prop.propertyType === "urgent" && prop.value.type === "urgent" && prop.value.slotIndex === undefined) {
+              return {
+                ...prop,
+                value: {
+                  ...prop.value,
+                  slotIndex: slotCounter++,
+                },
+              };
             }
+            return prop;
+          }),
+          createdAt: new Date(b.createdAt),
+          updatedAt: new Date(b.updatedAt),
+        }));
 
-            setBlocks(loadedBlocks);
-
-            // Supabase가 연결되어 있으면 로컬 데이터를 Supabase에 마이그레이션
-            if (shouldUseSupabase) {
-              console.log("로컬 데이터를 Supabase로 마이그레이션:", loadedBlocks.length);
-              syncToSupabase(loadedBlocks, true);
-            }
-          } else {
-            setBlocks(mockBlocks);
-            if (shouldUseSupabase) {
-              console.log("목업 데이터를 Supabase로 마이그레이션");
-              syncToSupabase(mockBlocks, true);
-            }
-          }
-        } catch {
-          setBlocks(mockBlocks);
-          if (shouldUseSupabase) {
-            syncToSupabase(mockBlocks, true);
-          }
-        }
+        const processedBlocks = processExpiredTop3(loadedBlocks);
+        setBlocks(processedBlocks);
+        setPrevBlocks(processedBlocks);
       } else {
         setBlocks(mockBlocks);
-        if (shouldUseSupabase) {
-          syncToSupabase(mockBlocks, true);
-        }
+        setPrevBlocks(mockBlocks);
       }
       setIsLoaded(true);
     }
 
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 블록 변경 시 저장
+  // 블록 변경 시 저장 (useBlockSync의 debouncedSync 사용)
   useEffect(() => {
     if (isLoaded) {
-      // 로컬 스토리지에 항상 저장 (폴백용)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
-
-      // Supabase에 동기화
-      if (useSupabase) {
-        debouncedSync(blocks);
-      }
+      // debouncedSync가 로컬 스토리지 + Supabase 동기화 모두 처리
+      debouncedSync(blocks);
     }
-  }, [blocks, isLoaded, useSupabase, debouncedSync]);
+  }, [blocks, isLoaded, debouncedSync]);
 
   // TOP 3 히스토리 저장 (로컬만, 나중에 Supabase 추가 가능)
   useEffect(() => {
@@ -870,7 +769,12 @@ export function useBlocks() {
   return {
     blocks,
     isLoaded,
-    useSupabase, // Supabase 연결 상태 노출
+    // 동기화 상태 (useBlockSync에서)
+    syncStatus,
+    syncError,
+    isOnline,
+    isSupabaseConnected,
+    useSupabase, // 로컬 상태 (Supabase 사용 여부)
     addBlock,
     updateBlock,
     deleteBlock,

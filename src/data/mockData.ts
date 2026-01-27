@@ -22,7 +22,7 @@ export const mockBlockTypes: BlockType[] = [
   {
     id: "type-1",
     name: "학생",
-    icon: "👤",
+    icon: "○",
     color: "#3b82f6",
     propertyIds: ["contact", "tag", "memo"],
     createdAt: new Date(),
@@ -30,7 +30,7 @@ export const mockBlockTypes: BlockType[] = [
   {
     id: "type-2",
     name: "수업",
-    icon: "📚",
+    icon: "▢",
     color: "#10b981",
     propertyIds: ["date", "repeat", "tag"],
     createdAt: new Date(),
@@ -38,7 +38,7 @@ export const mockBlockTypes: BlockType[] = [
   {
     id: "type-3",
     name: "할일",
-    icon: "✅",
+    icon: "☑",
     color: "#f59e0b",
     propertyIds: ["checkbox", "date", "priority"],
     createdAt: new Date(),

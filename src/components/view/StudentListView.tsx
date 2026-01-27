@@ -238,7 +238,7 @@ export function StudentListView({
       {/* 헤더 */}
       <header className="h-14 flex items-center justify-between px-6 border-b border-border">
         <div className="flex items-center gap-2">
-          <span className="text-lg">👤</span>
+          <span className="text-lg">○</span>
           <span className="font-medium">학생 대시보드</span>
         </div>
         <button
@@ -305,7 +305,7 @@ export function StudentListView({
           {/* 태그별 분포 막대 그래프 */}
           <div className="p-4 rounded-xl border border-border bg-card">
             <h3 className="font-medium mb-4 flex items-center gap-2">
-              <span>📊</span> 태그별 학생 분포
+              <span>▦</span> 태그별 학생 분포
             </h3>
             {tagDistribution.length > 0 ? (
               <div className="space-y-3">
@@ -386,7 +386,7 @@ export function StudentListView({
           {/* 목록 헤더 */}
           <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h3 className="font-medium flex items-center gap-2">
-              <span>📋</span> 전체 학생 목록
+              <span>☰</span> 전체 학생 목록
               <span className="text-sm text-muted-foreground font-normal">
                 ({filteredStudents.length}명)
               </span>
@@ -479,7 +479,7 @@ export function StudentListView({
               </>
             ) : studentBlocks.length === 0 ? (
               <div className="text-center py-12">
-                <div className="text-4xl mb-4">👤</div>
+                <div className="text-4xl mb-4">○</div>
                 <p className="text-muted-foreground mb-4">등록된 학생이 없어요</p>
                 <button
                   onClick={onAddStudent}

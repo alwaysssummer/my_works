@@ -2,9 +2,9 @@
 
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
-import { Editor } from "./Editor";
+import { ViewRouter } from "./ViewRouter";
 import { SearchModal } from "./SearchModal";
-import { CalendarView, Dashboard, WeeklySchedule, NoteView, StudentListView } from "@/components/view";
+import { NoteView } from "@/components/view";
 import { useBlocks } from "@/hooks/useBlocks";
 import { useSettings } from "@/hooks/useSettings";
 import { useTags } from "@/hooks/useTags";
@@ -345,106 +345,62 @@ export function AppLayout() {
         onSelectStudent={handleSelectStudent}
       />
 
-      {view.type === "students" ? (
-        // 학생 목록 뷰
-        <StudentListView
-          blocks={blocks}
-          blockTypes={blockTypes}
-          tags={tags}
-          onSelectBlock={handleSelectBlock}
-          onAddStudent={handleAddStudent}
-        />
-      ) : view.type === "dashboard" ? (
-        // 대시보드 뷰
-        <Dashboard
-          blocks={blocks}
-          top3Blocks={top3Blocks}
-          top3History={top3History}
-          onAddToTop3={addToTop3}
-          onRemoveFromTop3={removeFromTop3}
-          onAddBlock={addBlock}
-          onUpdateBlock={updateBlock}
-          onToggleCheckbox={handleToggleCheckbox}
-          onSelectBlock={handleSelectBlock}
-        />
-      ) : view.type === "weekly" ? (
-        // 주간 시간표 뷰
-        <WeeklySchedule
-          blocks={blocks}
-          settings={settings}
-          onAddBlock={addBlock}
-          onUpdateBlock={updateBlock}
-          onAddProperty={addProperty}
-          onSelectBlock={handleSelectBlock}
-        />
-      ) : view.type === "calendar" && !view.date ? (
-        // 캘린더 뷰 (날짜 미선택 시)
-        <main className="flex-1 h-screen overflow-auto bg-background">
-          <header className="h-14 flex items-center justify-between px-4 border-b border-border">
-            <div className="text-sm font-medium">{viewTitle}</div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                날짜 선택
-              </span>
-            </div>
-          </header>
-          <CalendarView
-            blocks={blocks}
-            selectedDate={view.date}
-            students={students}
-            onSelectDate={handleCalendarSelectDate}
-            onAddSchedule={handleAddSchedule}
-          />
-        </main>
-      ) : (
-        // 일반 에디터 뷰
-        <Editor
-          blocks={blocks}
-          filteredBlocks={filteredBlocks}
-          isLoaded={isLoaded}
-          viewTitle={viewTitle}
-          viewType={view.type}
-          tags={tags}
-          blockTypes={blockTypes}
-          onAddBlock={addBlock}
-          onUpdateBlock={updateBlock}
-          onDeleteBlock={deleteBlock}
-          onIndentBlock={indentBlock}
-          onOutdentBlock={outdentBlock}
-          onToggleCollapse={toggleCollapse}
-          hasChildren={hasChildren}
-          isChildOfCollapsed={isChildOfCollapsed}
-          getPrevBlockId={getPrevBlockId}
-          getNextBlockId={getNextBlockId}
-          onAddProperty={addProperty}
-          onUpdateProperty={updateProperty}
-          onUpdatePropertyByType={updatePropertyByType}
-          onUpdateBlockName={updateBlockName}
-          onUpdatePropertyName={updatePropertyName}
-          onRemoveProperty={removeProperty}
-          onRemovePropertyByType={removePropertyByType}
-          onCreateTag={createTag}
-          onApplyType={handleApplyTypeToBlock}
-          onMoveBlockUp={moveBlockUp}
-          onMoveBlockDown={moveBlockDown}
-          onDuplicateBlock={duplicateBlock}
-          onDeleteCompletedTodos={deleteCompletedTodos}
-          selectedBlockId={focusedBlockId}
-          onClearSelection={() => setFocusedBlockId(null)}
-          triggerQuickInput={triggerQuickInput}
-          onTogglePin={togglePin}
-          onMoveToColumn={moveToColumn}
-          frequentTags={frequentTags}
-          // 다중 선택 관련
-          selectedBlockIds={selectedBlockIds}
-          isSelectionMode={isSelectionMode}
-          onToggleSelectionMode={toggleSelectionMode}
-          onToggleBlockSelection={toggleBlockSelection}
-          onSelectAllBlocks={selectAllBlocks}
-          onClearBlockSelection={clearSelection}
-          onDeleteSelectedBlocks={deleteSelectedBlocks}
-        />
-      )}
+      <ViewRouter
+        view={view}
+        blocks={blocks}
+        filteredBlocks={filteredBlocks}
+        isLoaded={isLoaded}
+        viewTitle={viewTitle}
+        tags={tags}
+        blockTypes={blockTypes}
+        top3Blocks={top3Blocks}
+        top3History={top3History}
+        students={students}
+        settings={settings}
+        frequentTags={frequentTags}
+        selectedBlockIds={selectedBlockIds}
+        isSelectionMode={isSelectionMode}
+        selectedBlockId={focusedBlockId}
+        onAddBlock={addBlock}
+        onUpdateBlock={updateBlock}
+        onDeleteBlock={deleteBlock}
+        onSelectBlock={handleSelectBlock}
+        onAddStudent={handleAddStudent}
+        onAddToTop3={addToTop3}
+        onRemoveFromTop3={removeFromTop3}
+        onToggleCheckbox={handleToggleCheckbox}
+        onAddProperty={addProperty}
+        onCalendarSelectDate={handleCalendarSelectDate}
+        onAddSchedule={handleAddSchedule}
+        onIndentBlock={indentBlock}
+        onOutdentBlock={outdentBlock}
+        onToggleCollapse={toggleCollapse}
+        hasChildren={hasChildren}
+        isChildOfCollapsed={isChildOfCollapsed}
+        getPrevBlockId={getPrevBlockId}
+        getNextBlockId={getNextBlockId}
+        onUpdateProperty={updateProperty}
+        onUpdatePropertyByType={updatePropertyByType}
+        onUpdateBlockName={updateBlockName}
+        onUpdatePropertyName={updatePropertyName}
+        onRemoveProperty={removeProperty}
+        onRemovePropertyByType={removePropertyByType}
+        onCreateTag={createTag}
+        onApplyType={handleApplyTypeToBlock}
+        onMoveBlockUp={moveBlockUp}
+        onMoveBlockDown={moveBlockDown}
+        onDuplicateBlock={duplicateBlock}
+        onDeleteCompletedTodos={deleteCompletedTodos}
+        onClearSelection={() => setFocusedBlockId(null)}
+        triggerQuickInput={triggerQuickInput}
+        onTogglePin={togglePin}
+        onMoveToColumn={moveToColumn}
+        onToggleSelectionMode={toggleSelectionMode}
+        onToggleBlockSelection={toggleBlockSelection}
+        onSelectAllBlocks={selectAllBlocks}
+        onClearBlockSelection={clearSelection}
+        onDeleteSelectedBlocks={deleteSelectedBlocks}
+      />
 
       {/* 검색 모달 */}
       <SearchModal

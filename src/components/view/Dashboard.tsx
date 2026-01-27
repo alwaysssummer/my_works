@@ -5,6 +5,80 @@ import { Block, Top3History } from "@/types/block";
 import { X, Plus, ChevronRight, Clock, Flame, Search } from "lucide-react";
 import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
 import { useListNavigation } from "@/hooks/useListNavigation";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { formatDateWithWeekday } from "@/lib/dateFormat";
+
+// TOP 3 선택 모달 컴포넌트
+function Top3SelectorModal({
+  availableBlocks,
+  editingSlotIndex,
+  onSelect,
+  onClose,
+}: {
+  availableBlocks: Block[];
+  editingSlotIndex: number | null;
+  onSelect: (blockId: string) => void;
+  onClose: () => void;
+}) {
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    enabled: true,
+    onEscape: onClose,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="top3-selector-title"
+    >
+      <div
+        ref={containerRef}
+        className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[60vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h3 id="top3-selector-title" className="font-semibold">TOP 3에 추가할 항목 선택</h3>
+          <button
+            onClick={onClose}
+            aria-label="모달 닫기"
+            className="p-1 rounded-full hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="w-5 h-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="p-2 overflow-y-auto max-h-[400px]" role="listbox" aria-label="선택 가능한 블록">
+          {availableBlocks.length > 0 ? (
+            availableBlocks.slice(0, 20).map((block) => {
+              const parsed = parseBlockContent(block.content);
+              return (
+                <button
+                  key={block.id}
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => onSelect(block.id)}
+                  className="w-full text-left p-3 rounded-lg hover:bg-gray-100 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                >
+                  <span className="text-sm line-clamp-2 flex items-center gap-1">
+                    {parsed.icon && (
+                      <span aria-hidden="true" style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
+                    )}
+                    {getBlockTitle(block.content, 40)}
+                  </span>
+                </button>
+              );
+            })
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              추가할 수 있는 항목이 없어요
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface DashboardProps {
   blocks: Block[];
@@ -153,17 +227,12 @@ export function Dashboard({
       {/* 헤더 */}
       <header className="h-14 flex items-center justify-between px-6 border-b border-border">
         <div className="flex items-center gap-2">
-          <span className="text-lg">🏠</span>
-          <span className="font-medium">대시보드</span>
+          <span className="text-lg" aria-hidden="true">⌂</span>
+          <h1 className="font-medium">대시보드</h1>
         </div>
-        <div className="text-sm text-muted-foreground">
-          {new Date().toLocaleDateString("ko-KR", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            weekday: "long",
-          })}
-        </div>
+        <time dateTime={today} className="text-sm text-muted-foreground">
+          {formatDateWithWeekday(new Date())}
+        </time>
       </header>
 
       <div className="max-w-4xl mx-auto p-6 space-y-8">
@@ -180,9 +249,10 @@ export function Dashboard({
             {top3Blocks.length < 3 && (
               <button
                 onClick={() => setShowTop3Selector(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition-colors"
+                aria-label="TOP 3에 항목 추가"
+                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
                 추가
               </button>
             )}
@@ -219,9 +289,10 @@ export function Dashboard({
                         e.stopPropagation();
                         onRemoveFromTop3(block.id);
                       }}
-                      className="absolute top-2 right-2 p-1 rounded-full hover:bg-white/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="TOP 3에서 제거"
+                      className="absolute top-2 right-2 p-1 rounded-full hover:bg-white/50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <X className="w-4 h-4 text-gray-500" />
+                      <X className="w-4 h-4 text-gray-500" aria-hidden="true" />
                     </button>
 
                     {/* 체크박스 */}
@@ -231,14 +302,16 @@ export function Dashboard({
                           e.stopPropagation();
                           handleCheckboxToggle(block);
                         }}
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        aria-label={completed ? "완료 해제" : "완료 처리"}
+                        aria-pressed={completed}
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                           completed
                             ? "bg-green-500 border-green-500 text-white"
                             : "border-orange-300 hover:border-orange-500"
                         }`}
                       >
                         {completed && (
-                          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+                          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                             <path
                               d="M2 6L5 9L10 3"
                               stroke="currentColor"
@@ -350,7 +423,7 @@ export function Dashboard({
           {yesterdayTop3 && yesterdayTop3.blocks.length > 0 && (
             <div className="mt-3 pt-3 border-t border-orange-200">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs text-muted-foreground">📊 어제의 성취</span>
+                <span className="text-xs text-muted-foreground">▦ 어제의 성취</span>
                 <span className="text-xs text-muted-foreground">
                   ({yesterdayTop3.blocks.filter((b) => b.completed).length}/{yesterdayTop3.blocks.length} 완료)
                 </span>
@@ -365,7 +438,7 @@ export function Dashboard({
                         : "bg-gray-100 text-gray-500"
                     }`}
                   >
-                    <span className="mr-1">{block.completed ? "✅" : "⬜"}</span>
+                    <span className="mr-1">{block.completed ? "☑" : "□"}</span>
                     <span className={block.completed ? "" : "line-through"}>
                       {block.content.length > 25
                         ? block.content.slice(0, 25) + "..."
@@ -448,7 +521,7 @@ export function Dashboard({
         {/* 빠른 메모 섹션 */}
         <section>
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">💡</span>
+            <span className="text-lg">◈</span>
             <h2 className="text-lg font-semibold">빠른 메모</h2>
           </div>
 
@@ -478,54 +551,16 @@ export function Dashboard({
 
       {/* TOP 3 선택 모달 */}
       {showTop3Selector && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowTop3Selector(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[60vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <h3 className="font-semibold">TOP 3에 추가할 항목 선택</h3>
-              <button
-                onClick={() => setShowTop3Selector(false)}
-                className="p-1 rounded-full hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-2 overflow-y-auto max-h-[400px]">
-              {availableBlocks.length > 0 ? (
-                availableBlocks.slice(0, 20).map((block) => {
-                  const parsed = parseBlockContent(block.content);
-                  return (
-                    <button
-                      key={block.id}
-                      onClick={() => {
-                        onAddToTop3(block.id, editingSlotIndex ?? undefined);
-                        setShowTop3Selector(false);
-                        setEditingSlotIndex(null);
-                      }}
-                      className="w-full text-left p-3 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                      <span className="text-sm line-clamp-2 flex items-center gap-1">
-                        {parsed.icon && (
-                          <span style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
-                        )}
-                        {getBlockTitle(block.content, 40)}
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  추가할 수 있는 항목이 없어요
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <Top3SelectorModal
+          availableBlocks={availableBlocks}
+          editingSlotIndex={editingSlotIndex}
+          onSelect={(blockId) => {
+            onAddToTop3(blockId, editingSlotIndex ?? undefined);
+            setShowTop3Selector(false);
+            setEditingSlotIndex(null);
+          }}
+          onClose={() => setShowTop3Selector(false)}
+        />
       )}
     </main>
   );

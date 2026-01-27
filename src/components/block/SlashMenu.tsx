@@ -115,8 +115,10 @@ export function SlashMenu({
       <div
         className="fixed bg-popover border border-border rounded-lg shadow-lg py-2 px-3 z-50"
         style={{ top: position.top, left: position.left }}
+        role="listbox"
+        aria-label="명령어 메뉴"
       >
-        <p className="text-sm text-muted-foreground">결과 없음</p>
+        <p className="text-sm text-muted-foreground" role="option" aria-disabled="true">결과 없음</p>
       </div>
     );
   }
@@ -125,22 +127,28 @@ export function SlashMenu({
     <div
       className="fixed bg-popover border border-border rounded-lg shadow-lg py-1 z-50 min-w-[200px] max-h-[300px] overflow-y-auto"
       style={{ top: position.top, left: position.left }}
+      role="listbox"
+      aria-label="명령어 메뉴"
+      aria-activedescendant={filteredItems[selectedIndex]?.id}
     >
-      <div className="px-3 py-1.5 text-xs text-muted-foreground uppercase">
+      <div className="px-3 py-1.5 text-xs text-muted-foreground uppercase" aria-hidden="true">
         명령어
       </div>
       {filteredItems.map((item, index) => (
         <button
           key={item.id}
+          id={item.id}
+          role="option"
+          aria-selected={index === selectedIndex}
           onClick={() => {
             item.action();
             onClose();
           }}
-          className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 ${
+          className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
             index === selectedIndex ? "bg-accent" : "hover:bg-accent/50"
           }`}
         >
-          <span className="text-lg">{item.icon}</span>
+          <span className="text-lg" aria-hidden="true">{item.icon}</span>
           <div className="flex-1">
             <div className="font-medium">{item.name}</div>
             <div className="text-xs text-muted-foreground">

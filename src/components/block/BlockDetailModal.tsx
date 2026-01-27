@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Block, BlockColumn, getBlockDisplayName } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES, BlockProperty } from "@/types/property";
 import { BlockType } from "@/types/blockType";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface BlockDetailModalProps {
   block: Block;
@@ -23,9 +24,9 @@ interface BlockDetailModalProps {
 }
 
 const COLUMN_LABELS: Record<BlockColumn, { label: string; icon: string }> = {
-  focus: { label: "포커스", icon: "🎯" },
-  inbox: { label: "수집", icon: "📥" },
-  queue: { label: "대기", icon: "📋" },
+  focus: { label: "포커스", icon: "◉" },
+  inbox: { label: "수집", icon: "▽" },
+  queue: { label: "대기", icon: "☰" },
 };
 
 const PRIORITY_OPTIONS: { value: PriorityLevel; label: string; color: string }[] = [
@@ -78,6 +79,16 @@ export function BlockDetailModal({
   const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    enabled: true,
+    onEscape: () => {
+      handleSaveBlockName();
+      handleSaveContent();
+      onClose();
+    },
+    initialFocusRef: nameInputRef,
+  });
 
   // 오늘/내일/다음주 날짜
   const today = new Date().toISOString().split("T")[0];
@@ -280,7 +291,12 @@ export function BlockDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="block-detail-title"
+    >
       {/* 배경 오버레이 */}
       <div
         className="absolute inset-0 bg-black/50"
@@ -291,27 +307,34 @@ export function BlockDetailModal({
       />
 
       {/* 모달 - 노션 스타일 */}
-      <div className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-6xl h-[85vh] overflow-hidden flex flex-col mx-6">
+      <div
+        ref={containerRef}
+        className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-6xl h-[85vh] overflow-hidden flex flex-col mx-6"
+      >
         {/* 헤더 - 블록 이름 입력 + 닫기 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <label htmlFor="block-name-input" className="sr-only">블록 이름</label>
           <input
+            id="block-name-input"
             ref={nameInputRef}
             type="text"
             value={blockName}
             onChange={(e) => setBlockName(e.target.value)}
             onBlur={handleSaveBlockName}
             placeholder="블록 이름을 입력하세요..."
-            className="flex-1 bg-transparent text-lg font-medium focus:outline-none placeholder:text-muted-foreground/50"
+            className="flex-1 bg-transparent text-lg font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded placeholder:text-muted-foreground/50"
           />
+          <h2 id="block-detail-title" className="sr-only">블록 상세 편집</h2>
           <button
             onClick={() => {
               handleSaveBlockName();
               handleSaveContent();
               onClose();
             }}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors ml-2"
+            aria-label="모달 닫기"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors ml-2 focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="text-base">✕</span>
+            <span className="text-base" aria-hidden="true">✕</span>
           </button>
         </div>
 
@@ -331,18 +354,18 @@ export function BlockDetailModal({
             {!isPropertyExpanded && propertyCount > 0 && (
               <div className="flex items-center gap-3 text-sm ml-2">
                 {hasPropertyType("date") && dateStr && (
-                  <span className="text-muted-foreground">📅 {getDateDisplayText()}</span>
+                  <span className="text-muted-foreground">◇ {getDateDisplayText()}</span>
                 )}
                 {hasPropertyType("tag") && blockTags.length > 0 && (
                   <span className="text-muted-foreground">
-                    🏷️ {blockTags.map(t => t?.name).join(", ")}
+                    # {blockTags.map(t => t?.name).join(", ")}
                   </span>
                 )}
                 {hasPropertyType("priority") && priority !== "none" && (
-                  <span className="text-muted-foreground">⚡ {PRIORITY_LABELS[priority]}</span>
+                  <span className="text-muted-foreground">! {PRIORITY_LABELS[priority]}</span>
                 )}
                 {hasPropertyType("checkbox") && (
-                  <span className="text-muted-foreground">{isChecked ? "☑" : "☐"}</span>
+                  <span className="text-muted-foreground">{isChecked ? "☑" : "□"}</span>
                 )}
               </div>
             )}
@@ -397,7 +420,7 @@ export function BlockDetailModal({
               <div className="py-2">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">📅</span>
+                    <span className="text-sm">◇</span>
                     {editingPropertyId === dateProp.id ? (
                       <input
                         type="text"
@@ -474,7 +497,7 @@ export function BlockDetailModal({
             {priorityProp && (
               <div className="py-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm">⚡</span>
+                  <span className="text-sm">!</span>
                   {editingPropertyId === priorityProp.id ? (
                     <input
                       type="text"
@@ -520,7 +543,7 @@ export function BlockDetailModal({
             {tagProp && (
               <div className="py-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm">🏷️</span>
+                  <span className="text-sm">#</span>
                   {editingPropertyId === tagProp.id ? (
                     <input
                       type="text"
@@ -607,7 +630,7 @@ export function BlockDetailModal({
             {memoProp && (
               <div className="py-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm">📝</span>
+                  <span className="text-sm">≡</span>
                   {editingPropertyId === memoProp.id ? (
                     <input
                       type="text"
@@ -644,7 +667,7 @@ export function BlockDetailModal({
             {contactProp && (
               <div className="py-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm">📞</span>
+                  <span className="text-sm">☎</span>
                   {editingPropertyId === contactProp.id ? (
                     <input
                       type="text"
@@ -719,7 +742,7 @@ export function BlockDetailModal({
             {/* 타입 적용 - 속성 섹션 내부 */}
             {blockTypes.length > 0 && (
               <div className="pt-3 border-t border-border mt-3">
-                <span className="text-sm text-muted-foreground block mb-2">📋 타입 적용</span>
+                <span className="text-sm text-muted-foreground block mb-2">☰ 타입 적용</span>
                 <div className="flex flex-wrap gap-2">
                   {blockTypes.map((type) => (
                     <button
@@ -739,12 +762,14 @@ export function BlockDetailModal({
 
         {/* 본문 영역 - 최대 확장 */}
         <div className="flex-1 overflow-auto px-5 py-4 min-h-0">
+          <label htmlFor="block-content" className="sr-only">블록 내용</label>
           <textarea
+            id="block-content"
             ref={contentRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onBlur={handleSaveContent}
-            className="w-full h-full bg-transparent text-sm resize-none focus:outline-none placeholder:text-muted-foreground/50"
+            className="w-full h-full bg-transparent text-sm resize-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded placeholder:text-muted-foreground/50"
             placeholder="여기에 내용을 작성하세요..."
           />
         </div>
@@ -755,25 +780,34 @@ export function BlockDetailModal({
           <div className="relative">
             <button
               onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent px-3 py-1.5 rounded transition-colors"
+              aria-expanded={showColumnDropdown}
+              aria-haspopup="listbox"
+              aria-label={`현재 위치: ${COLUMN_LABELS[block.column].label}`}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent px-3 py-1.5 rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {COLUMN_LABELS[block.column].icon} {COLUMN_LABELS[block.column].label}
-              <span className="text-xs">▾</span>
+              <span aria-hidden="true">{COLUMN_LABELS[block.column].icon}</span> {COLUMN_LABELS[block.column].label}
+              <span className="text-xs" aria-hidden="true">▾</span>
             </button>
             {showColumnDropdown && (
-              <div className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden z-10">
+              <div
+                className="absolute bottom-full left-0 mb-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden z-10"
+                role="listbox"
+                aria-label="위치 선택"
+              >
                 {(Object.keys(COLUMN_LABELS) as BlockColumn[]).map((col) => (
                   <button
                     key={col}
+                    role="option"
+                    aria-selected={block.column === col}
                     onClick={() => {
                       handleMoveToColumn(col);
                       setShowColumnDropdown(false);
                     }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent transition-colors ${
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
                       block.column === col ? "bg-accent/50" : ""
                     }`}
                   >
-                    {COLUMN_LABELS[col].icon} {COLUMN_LABELS[col].label}
+                    <span aria-hidden="true">{COLUMN_LABELS[col].icon}</span> {COLUMN_LABELS[col].label}
                   </button>
                 ))}
               </div>
@@ -783,10 +817,10 @@ export function BlockDetailModal({
           {/* 삭제 버튼 - 아이콘만 */}
           <button
             onClick={handleDelete}
-            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-2 rounded transition-colors"
-            title="삭제"
+            aria-label="블록 삭제"
+            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-2 rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring"
           >
-            🗑️
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
       </div>

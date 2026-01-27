@@ -12,6 +12,7 @@ import { Block, BlockColumn, BlockProperty } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { saveImage, getImage } from "@/lib/imageStorage";
+import { formatRelativeDate } from "@/lib/dateFormat";
 
 interface NoteViewProps {
   block: Block;
@@ -389,35 +390,36 @@ export function NoteView({
         <div className="flex items-center gap-2">
           <button
             onClick={onClose}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="목록으로 돌아가기"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring rounded"
           >
-            <span>←</span>
+            <span aria-hidden="true">←</span>
             <span>돌아가기</span>
           </button>
 
           {/* 이전/다음 이동 버튼 */}
           {hasNavigation && (
-            <div className="flex items-center gap-1 ml-4 border-l border-border pl-4">
+            <nav className="flex items-center gap-1 ml-4 border-l border-border pl-4" aria-label="블록 탐색">
               <button
                 onClick={handlePrevBlock}
                 disabled={!prevBlock}
-                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title="이전 (Alt+←)"
+                aria-label="이전 블록 (Alt+←)"
+                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="text-sm">◀</span>
+                <span className="text-sm" aria-hidden="true">◀</span>
               </button>
-              <span className="text-xs text-muted-foreground px-1">
+              <span className="text-xs text-muted-foreground px-1" aria-live="polite">
                 {currentIndex + 1} / {contextBlocks.length}
               </span>
               <button
                 onClick={handleNextBlock}
                 disabled={!nextBlock}
-                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title="다음 (Alt+→)"
+                aria-label="다음 블록 (Alt+→)"
+                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="text-sm">▶</span>
+                <span className="text-sm" aria-hidden="true">▶</span>
               </button>
-            </div>
+            </nav>
           )}
         </div>
 
@@ -427,14 +429,15 @@ export function NoteView({
           {hasPropertyType("checkbox") && (
             <button
               onClick={handleToggleCheckbox}
-              className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+              aria-label={isChecked ? "할일 완료 해제" : "할일 완료 처리"}
+              aria-pressed={isChecked}
+              className={`w-5 h-5 rounded border flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                 isChecked
                   ? "bg-primary border-primary text-primary-foreground"
                   : "border-muted-foreground/50 hover:border-primary"
               }`}
-              title="할일 토글"
             >
-              {isChecked && <span className="text-xs">✓</span>}
+              {isChecked && <span className="text-xs" aria-hidden="true">✓</span>}
             </button>
           )}
 
@@ -443,9 +446,12 @@ export function NoteView({
             <div className="relative">
               <button
                 onClick={() => setShowDatePicker(!showDatePicker)}
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
+                aria-label={`날짜: ${getDateDisplayText()}`}
+                aria-expanded={showDatePicker}
+                aria-haspopup="dialog"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span>📅</span>
+                <span aria-hidden="true">◇</span>
                 <span>{getDateDisplayText()}</span>
               </button>
               {showDatePicker && (
@@ -508,7 +514,7 @@ export function NoteView({
                 onClick={() => setShowPropertyBar(!showPropertyBar)}
                 className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
               >
-                <span>🏷️</span>
+                <span>#</span>
                 {blockTags.length > 0 ? (
                   <div className="flex items-center gap-1">
                     {blockTags.slice(0, 2).map((tag) => (
@@ -599,7 +605,7 @@ export function NoteView({
                 onClick={() => setShowPriorityPicker(!showPriorityPicker)}
                 className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
               >
-                <span>⚡</span>
+                <span>!</span>
                 <span>{PRIORITY_LABELS[priority]}</span>
               </button>
               {showPriorityPicker && (
@@ -625,20 +631,27 @@ export function NoteView({
           <div className="relative">
             <button
               onClick={() => setShowAddProperty(!showAddProperty)}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
-              title="속성 추가"
+              aria-label="속성 추가"
+              aria-expanded={showAddProperty}
+              aria-haspopup="menu"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             >
-              +
+              <span aria-hidden="true">+</span>
             </button>
             {showAddProperty && (
-              <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[140px]">
+              <div
+                className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[140px]"
+                role="menu"
+                aria-label="속성 추가 메뉴"
+              >
                 {allPropertyTypes.map((prop) => (
                   <button
                     key={prop.id}
+                    role="menuitem"
                     onClick={() => handleAddProperty(prop.type)}
-                    className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2"
+                    className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                   >
-                    <span>{prop.icon}</span>
+                    <span aria-hidden="true">{prop.icon}</span>
                     {prop.name}
                   </button>
                 ))}
@@ -649,10 +662,10 @@ export function NoteView({
           {/* 삭제 버튼 */}
           <button
             onClick={handleDelete}
-            className="text-sm text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10"
-            title="삭제 (Ctrl+Backspace)"
+            aria-label="블록 삭제 (Ctrl+Backspace)"
+            className="text-sm text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring"
           >
-            🗑️
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
       </header>
@@ -679,7 +692,7 @@ export function NoteView({
               className="w-full text-3xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
             />
             {isStudentBlock && (
-              <p className="text-xs text-muted-foreground mt-1">👤 학생</p>
+              <p className="text-xs text-muted-foreground mt-1">○ 학생</p>
             )}
           </div>
 
@@ -708,19 +721,21 @@ export function NoteView({
       {/* 하단 상태 바 */}
       <footer className="flex items-center justify-between px-6 py-2 border-t border-border text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
-          <span>ESC 닫기</span>
-          {hasNavigation && <span>Alt+←/→ 이동</span>}
-          <span>Ctrl+Backspace 삭제</span>
-          <span>자동 저장</span>
+          <kbd className="px-1 py-0.5 bg-muted rounded">ESC</kbd>
+          <span>닫기</span>
+          {hasNavigation && (
+            <>
+              <kbd className="px-1 py-0.5 bg-muted rounded">Alt+←/→</kbd>
+              <span>이동</span>
+            </>
+          )}
+          <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+⌫</kbd>
+          <span>삭제</span>
+          <span aria-live="polite">자동 저장</span>
         </div>
-        <div>
-          {new Date(block.updatedAt).toLocaleString("ko-KR", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })} 수정됨
-        </div>
+        <time dateTime={new Date(block.updatedAt).toISOString()} aria-label="마지막 수정">
+          {formatRelativeDate(block.updatedAt)} 수정됨
+        </time>
       </footer>
     </div>
   );

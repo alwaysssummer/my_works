@@ -7,6 +7,7 @@ import { BlockType, TYPE_COLORS, TYPE_ICONS } from "@/types/blockType";
 import { CustomView, VIEW_ICONS as CUSTOM_VIEW_ICONS, VIEW_COLORS } from "@/types/customView";
 import { Block } from "@/types/block";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface StudentInfo {
   id: string;
@@ -67,13 +68,15 @@ export function Sidebar({
         {/* 대시보드 (항상 최상단) */}
         <button
           onClick={() => onChangeView("dashboard")}
-          className={`w-full px-3 py-2.5 text-left text-sm rounded-md flex items-center gap-2 transition-colors ${
+          aria-label="대시보드 뷰로 이동"
+          aria-current={currentView.type === "dashboard" ? "page" : undefined}
+          className={`w-full px-3 py-2.5 text-left text-sm rounded-md flex items-center gap-2 transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
             currentView.type === "dashboard"
               ? "bg-orange-100 text-orange-700 font-medium"
               : "hover:bg-sidebar-accent/50 text-sidebar-foreground"
           }`}
         >
-          <span>{VIEW_ICONS["dashboard"]}</span>
+          <span aria-hidden="true">{VIEW_ICONS["dashboard"]}</span>
           {VIEW_LABELS["dashboard"]}
         </button>
 
@@ -92,18 +95,20 @@ export function Sidebar({
             <button
               key={viewType}
               onClick={() => onChangeView(viewType)}
-              className={`w-full px-3 py-2 text-left text-sm rounded-md flex items-center justify-between transition-colors ${
+              aria-label={`${VIEW_LABELS[viewType]} 뷰로 이동${viewType === "all" && blockCounts.all > 0 ? `, ${blockCounts.all}개 항목` : ""}`}
+              aria-current={isActive ? "page" : undefined}
+              className={`w-full px-3 py-2 text-left text-sm rounded-md flex items-center justify-between transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                 isActive
                   ? "bg-sidebar-accent text-sidebar-foreground font-medium"
                   : "hover:bg-sidebar-accent/50 text-sidebar-foreground"
               }`}
             >
               <span className="flex items-center gap-2">
-                <span>{VIEW_ICONS[viewType]}</span>
+                <span aria-hidden="true">{VIEW_ICONS[viewType]}</span>
                 {VIEW_LABELS[viewType]}
               </span>
               {viewType === "all" && blockCounts.all > 0 && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground" aria-hidden="true">
                   {blockCounts.all}
                 </span>
               )}
@@ -115,22 +120,25 @@ export function Sidebar({
         <div className="px-3 py-1.5 mt-4 text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center justify-between">
           <button
             onClick={() => onChangeView("students")}
-            className={`flex items-center gap-1 hover:text-foreground ${
+            aria-label={`학생 목록 뷰로 이동, ${students.length}명`}
+            className={`flex items-center gap-1 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded ${
               currentView.type === "students" ? "text-foreground" : ""
             }`}
           >
-            <span>👤</span>
+            <span aria-hidden="true">○</span>
             <span>학생</span>
-            <span className="text-muted-foreground ml-1">({students.length})</span>
+            <span className="text-muted-foreground ml-1" aria-hidden="true">({students.length})</span>
           </button>
           <button
             onClick={() => setIsStudentExpanded(!isStudentExpanded)}
-            className="text-muted-foreground hover:text-foreground"
+            aria-label={isStudentExpanded ? "학생 목록 접기" : "학생 목록 펼치기"}
+            aria-expanded={isStudentExpanded}
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded"
           >
             {isStudentExpanded ? (
-              <ChevronDown className="w-3 h-3" />
+              <ChevronDown className="w-3 h-3" aria-hidden="true" />
             ) : (
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="w-3 h-3" aria-hidden="true" />
             )}
           </button>
         </div>
@@ -162,12 +170,13 @@ export function Sidebar({
 
         {/* 커스텀 뷰 섹션 */}
         <div className="px-3 py-1.5 mt-4 text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-          <span>뷰</span>
+          <span id="custom-views-label">뷰</span>
           <button
             onClick={() => setShowViewModal(true)}
-            className="text-muted-foreground hover:text-foreground"
+            aria-label="새 커스텀 뷰 만들기"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded"
           >
-            +
+            <span aria-hidden="true">+</span>
           </button>
         </div>
 
@@ -188,16 +197,19 @@ export function Sidebar({
               >
                 <button
                   onClick={() => onSelectCustomView(customView.id)}
-                  className="flex items-center gap-2 flex-1 text-left"
+                  aria-label={`${customView.name} 뷰로 이동`}
+                  aria-current={isActive ? "page" : undefined}
+                  className="flex items-center gap-2 flex-1 text-left focus-visible:ring-2 focus-visible:ring-ring rounded"
                 >
-                  <span>{customView.icon}</span>
+                  <span aria-hidden="true">{customView.icon}</span>
                   <span className="truncate">{customView.name}</span>
                 </button>
                 <button
                   onClick={() => onDeleteView(customView.id)}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive text-xs"
+                  aria-label={`${customView.name} 뷰 삭제`}
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-destructive text-xs focus-visible:ring-2 focus-visible:ring-ring rounded"
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               </div>
             );
@@ -243,12 +255,13 @@ export function Sidebar({
 
         {/* 타입 섹션 */}
         <div className="px-3 py-1.5 mt-4 text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-          <span>타입</span>
+          <span id="block-types-label">타입</span>
           <button
             onClick={() => setShowTypeModal(true)}
-            className="text-muted-foreground hover:text-foreground"
+            aria-label="새 타입 만들기"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded"
           >
-            +
+            <span aria-hidden="true">+</span>
           </button>
         </div>
 
@@ -259,14 +272,15 @@ export function Sidebar({
               className="group w-full px-3 py-2 text-left text-sm rounded-md flex items-center justify-between hover:bg-sidebar-accent/50 text-sidebar-foreground"
             >
               <span className="flex items-center gap-2">
-                <span>{type.icon}</span>
+                <span aria-hidden="true">{type.icon}</span>
                 <span className="truncate">{type.name}</span>
               </span>
               <button
                 onClick={() => onDeleteType(type.id)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive text-xs"
+                aria-label={`${type.name} 타입 삭제`}
+                className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-destructive text-xs focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
-                ×
+                <span aria-hidden="true">×</span>
               </button>
             </div>
           ))
@@ -279,8 +293,11 @@ export function Sidebar({
 
       {/* 하단 설정 */}
       <div className="p-2 border-t border-border space-y-1">
-        <button className="w-full px-3 py-2 text-left text-sm rounded-md hover:bg-sidebar-accent text-sidebar-foreground flex items-center gap-2">
-          <span>⚙️</span>
+        <button
+          aria-label="설정 열기"
+          className="w-full px-3 py-2 text-left text-sm rounded-md hover:bg-sidebar-accent text-sidebar-foreground flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span aria-hidden="true">⚙</span>
           설정
         </button>
         <button
@@ -293,9 +310,10 @@ export function Sidebar({
               window.location.reload();
             }
           }}
-          className="w-full px-3 py-2 text-left text-sm rounded-md hover:bg-sidebar-accent text-sidebar-foreground flex items-center gap-2"
+          aria-label="샘플 데이터 불러오기"
+          className="w-full px-3 py-2 text-left text-sm rounded-md hover:bg-sidebar-accent text-sidebar-foreground flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span>🔄</span>
+          <span aria-hidden="true">↻</span>
           샘플 데이터 불러오기
         </button>
       </div>
@@ -338,6 +356,11 @@ function TypeCreateModal({
   const [selectedColor, setSelectedColor] = useState(TYPE_COLORS[0]);
   const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
 
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    enabled: true,
+    onEscape: onClose,
+  });
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
@@ -354,102 +377,120 @@ function TypeCreateModal({
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-background rounded-lg shadow-xl w-80 max-h-[80vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="type-modal-title"
+    >
+      <div
+        ref={containerRef}
+        className="bg-background rounded-lg shadow-xl w-80 max-h-[80vh] overflow-y-auto"
+      >
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-medium">새 타입 만들기</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            ×
+          <h2 id="type-modal-title" className="font-medium">새 타입 만들기</h2>
+          <button
+            onClick={onClose}
+            aria-label="모달 닫기"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* 이름 */}
           <div>
-            <label className="block text-sm font-medium mb-1">이름</label>
+            <label htmlFor="type-name" className="block text-sm font-medium mb-1">이름</label>
             <input
+              id="type-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="예: 학생, 수업, 루틴"
-              className="w-full px-3 py-2 border border-border rounded text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               autoFocus
             />
           </div>
 
           {/* 아이콘 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">아이콘</label>
-            <div className="flex flex-wrap gap-1">
+          <fieldset>
+            <legend className="block text-sm font-medium mb-1">아이콘</legend>
+            <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="아이콘 선택">
               {TYPE_ICONS.map((icon) => (
                 <button
                   key={icon}
                   type="button"
                   onClick={() => setSelectedIcon(icon)}
-                  className={`w-8 h-8 flex items-center justify-center rounded text-lg ${
+                  aria-label={`아이콘 ${icon}`}
+                  aria-pressed={selectedIcon === icon}
+                  className={`w-8 h-8 flex items-center justify-center rounded text-lg focus-visible:ring-2 focus-visible:ring-ring ${
                     selectedIcon === icon
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-accent"
                   }`}
                 >
-                  {icon}
+                  <span aria-hidden="true">{icon}</span>
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* 색상 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">색상</label>
-            <div className="flex gap-1">
+          <fieldset>
+            <legend className="block text-sm font-medium mb-1">색상</legend>
+            <div className="flex gap-1" role="radiogroup" aria-label="색상 선택">
               {TYPE_COLORS.map((color) => (
                 <button
                   key={color}
                   type="button"
                   onClick={() => setSelectedColor(color)}
-                  className={`w-6 h-6 rounded-full ${
+                  aria-label={`색상 ${color}`}
+                  aria-pressed={selectedColor === color}
+                  className={`w-6 h-6 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                     selectedColor === color ? "ring-2 ring-offset-2 ring-foreground" : ""
                   }`}
                   style={{ backgroundColor: color }}
                 />
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* 속성 선택 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">포함할 속성</label>
-            <div className="space-y-1">
+          <fieldset>
+            <legend className="block text-sm font-medium mb-1">포함할 속성</legend>
+            <div className="space-y-1" role="group" aria-label="속성 선택">
               {DEFAULT_PROPERTIES.map((prop) => (
                 <button
                   key={prop.id}
                   type="button"
                   onClick={() => toggleProperty(prop.id)}
-                  className={`w-full px-3 py-2 text-left text-sm rounded border flex items-center gap-2 ${
+                  aria-pressed={selectedProperties.includes(prop.id)}
+                  className={`w-full px-3 py-2 text-left text-sm rounded border flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-ring ${
                     selectedProperties.includes(prop.id)
                       ? "border-primary bg-primary/10"
                       : "border-border hover:bg-accent"
                   }`}
                 >
-                  <span>{prop.icon}</span>
+                  <span aria-hidden="true">{prop.icon}</span>
                   {prop.name}
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* 버튼 */}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-3 py-2 text-sm border border-border rounded hover:bg-accent"
+              className="flex-1 px-3 py-2 text-sm border border-border rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={!name.trim()}
-              className="flex-1 px-3 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
+              className="flex-1 px-3 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
             >
               만들기
             </button>
@@ -473,6 +514,11 @@ function ViewCreateModal({
   const [selectedColor, setSelectedColor] = useState(VIEW_COLORS[0]);
   const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
 
+  const { containerRef } = useFocusTrap<HTMLDivElement>({
+    enabled: true,
+    onEscape: onClose,
+  });
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
@@ -489,104 +535,122 @@ function ViewCreateModal({
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-background rounded-lg shadow-xl w-80 max-h-[80vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="view-modal-title"
+    >
+      <div
+        ref={containerRef}
+        className="bg-background rounded-lg shadow-xl w-80 max-h-[80vh] overflow-y-auto"
+      >
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-medium">새 뷰 만들기</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            ×
+          <h2 id="view-modal-title" className="font-medium">새 뷰 만들기</h2>
+          <button
+            onClick={onClose}
+            aria-label="모달 닫기"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* 이름 */}
           <div>
-            <label className="block text-sm font-medium mb-1">이름</label>
+            <label htmlFor="view-name" className="block text-sm font-medium mb-1">이름</label>
             <input
+              id="view-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="예: 할일, 학생, 수업"
-              className="w-full px-3 py-2 border border-border rounded text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full px-3 py-2 border border-border rounded text-sm bg-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               autoFocus
             />
           </div>
 
           {/* 아이콘 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">아이콘</label>
-            <div className="flex flex-wrap gap-1">
+          <fieldset>
+            <legend className="block text-sm font-medium mb-1">아이콘</legend>
+            <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="아이콘 선택">
               {CUSTOM_VIEW_ICONS.map((icon) => (
                 <button
                   key={icon}
                   type="button"
                   onClick={() => setSelectedIcon(icon)}
-                  className={`w-8 h-8 flex items-center justify-center rounded text-lg ${
+                  aria-label={`아이콘 ${icon}`}
+                  aria-pressed={selectedIcon === icon}
+                  className={`w-8 h-8 flex items-center justify-center rounded text-lg focus-visible:ring-2 focus-visible:ring-ring ${
                     selectedIcon === icon
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-accent"
                   }`}
                 >
-                  {icon}
+                  <span aria-hidden="true">{icon}</span>
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* 색상 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">색상</label>
-            <div className="flex gap-1">
+          <fieldset>
+            <legend className="block text-sm font-medium mb-1">색상</legend>
+            <div className="flex gap-1" role="radiogroup" aria-label="색상 선택">
               {VIEW_COLORS.map((color) => (
                 <button
                   key={color}
                   type="button"
                   onClick={() => setSelectedColor(color)}
-                  className={`w-6 h-6 rounded-full ${
+                  aria-label={`색상 ${color}`}
+                  aria-pressed={selectedColor === color}
+                  className={`w-6 h-6 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                     selectedColor === color ? "ring-2 ring-offset-2 ring-foreground" : ""
                   }`}
                   style={{ backgroundColor: color }}
                 />
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* 속성 선택 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">
+          <fieldset>
+            <legend className="block text-sm font-medium mb-1">
               표시할 블록 (선택한 속성 중 하나라도 있으면)
-            </label>
-            <div className="space-y-1">
+            </legend>
+            <div className="space-y-1" role="group" aria-label="속성 선택">
               {DEFAULT_PROPERTIES.map((prop) => (
                 <button
                   key={prop.id}
                   type="button"
                   onClick={() => toggleProperty(prop.id)}
-                  className={`w-full px-3 py-2 text-left text-sm rounded border flex items-center gap-2 ${
+                  aria-pressed={selectedProperties.includes(prop.id)}
+                  className={`w-full px-3 py-2 text-left text-sm rounded border flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-ring ${
                     selectedProperties.includes(prop.id)
                       ? "border-primary bg-primary/10"
                       : "border-border hover:bg-accent"
                   }`}
                 >
-                  <span>{prop.icon}</span>
+                  <span aria-hidden="true">{prop.icon}</span>
                   {prop.name}
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* 버튼 */}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-3 py-2 text-sm border border-border rounded hover:bg-accent"
+              className="flex-1 px-3 py-2 text-sm border border-border rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={!name.trim() || selectedProperties.length === 0}
-              className="flex-1 px-3 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
+              className="flex-1 px-3 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
             >
               만들기
             </button>
