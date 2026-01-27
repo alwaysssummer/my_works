@@ -31,9 +31,9 @@ interface PropertyModalProps {
   block: Block;
   allTags: Tag[];
   blockTypes: BlockType[];
-  onAddProperty: (blockId: string, propertyId: string, type: PropertyType) => void;
-  onUpdateProperty: (blockId: string, propertyId: string, value: any) => void;
-  onRemoveProperty: (blockId: string, propertyId: string) => void;
+  onAddProperty: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
+  onUpdatePropertyByType: (blockId: string, propertyType: PropertyType, value: any) => void;
+  onRemovePropertyByType: (blockId: string, propertyType: PropertyType) => void;
   onCreateTag: (name: string, color: string) => Tag;
   onApplyType: (blockId: string, typeId: string) => void;
   onClose: () => void;
@@ -44,8 +44,8 @@ export function PropertyModal({
   allTags,
   blockTypes,
   onAddProperty,
-  onUpdateProperty,
-  onRemoveProperty,
+  onUpdatePropertyByType,
+  onRemovePropertyByType,
   onCreateTag,
   onApplyType,
   onClose,
@@ -54,13 +54,13 @@ export function PropertyModal({
   const [showTagInput, setShowTagInput] = useState(false);
 
   // 현재 속성 값들
-  const checkboxProp = block.properties.find((p) => p.propertyId === "checkbox");
-  const dateProp = block.properties.find((p) => p.propertyId === "date");
-  const tagProp = block.properties.find((p) => p.propertyId === "tag");
-  const priorityProp = block.properties.find((p) => p.propertyId === "priority");
-  const memoProp = block.properties.find((p) => p.propertyId === "memo");
-  const contactProp = block.properties.find((p) => p.propertyId === "contact");
-  const repeatProp = block.properties.find((p) => p.propertyId === "repeat");
+  const checkboxProp = block.properties.find((p) => p.propertyType === "checkbox");
+  const dateProp = block.properties.find((p) => p.propertyType === "date");
+  const tagProp = block.properties.find((p) => p.propertyType === "tag");
+  const priorityProp = block.properties.find((p) => p.propertyType === "priority");
+  const memoProp = block.properties.find((p) => p.propertyType === "memo");
+  const contactProp = block.properties.find((p) => p.propertyType === "contact");
+  const repeatProp = block.properties.find((p) => p.propertyType === "repeat");
 
   const isChecked = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
   const dateValue = dateProp?.value.type === "date" ? dateProp.value.date : "";
@@ -87,15 +87,15 @@ export function PropertyModal({
 
   // 속성 토글 (있으면 제거, 없으면 추가)
   const toggleProperty = useCallback(
-    (propId: string, type: PropertyType) => {
-      const exists = block.properties.some((p) => p.propertyId === propId);
+    (propertyType: PropertyType) => {
+      const exists = block.properties.some((p) => p.propertyType === propertyType);
       if (exists) {
-        onRemoveProperty(block.id, propId);
+        onRemovePropertyByType(block.id, propertyType);
       } else {
-        onAddProperty(block.id, propId, type);
+        onAddProperty(block.id, propertyType);
       }
     },
-    [block.id, block.properties, onAddProperty, onRemoveProperty]
+    [block.id, block.properties, onAddProperty, onRemovePropertyByType]
   );
 
   // 태그 토글
@@ -107,15 +107,13 @@ export function PropertyModal({
         : [...currentIds, tagId];
 
       if (!tagProp) {
-        onAddProperty(block.id, "tag", "tag");
-        setTimeout(() => {
-          onUpdateProperty(block.id, "tag", { type: "tag", tagIds: [tagId] });
-        }, 0);
+        // 태그 속성이 없으면 초기값과 함께 추가
+        onAddProperty(block.id, "tag", undefined, { type: "tag", tagIds: [tagId] });
       } else {
-        onUpdateProperty(block.id, "tag", { type: "tag", tagIds: newIds });
+        onUpdatePropertyByType(block.id, "tag", { type: "tag", tagIds: newIds });
       }
     },
-    [block.id, tagProp, onAddProperty, onUpdateProperty]
+    [block.id, tagProp, onAddProperty, onUpdatePropertyByType]
   );
 
   // 새 태그 생성
@@ -161,11 +159,11 @@ export function PropertyModal({
             <p className="text-sm font-medium text-muted-foreground mb-3">빠른 추가</p>
             <div className="flex flex-wrap gap-2">
               {DEFAULT_PROPERTIES.slice(0, 4).map((prop) => {
-                const hasProperty = block.properties.some((p) => p.propertyId === prop.id);
+                const hasProperty = block.properties.some((p) => p.propertyType === prop.id);
                 return (
                   <button
                     key={prop.id}
-                    onClick={() => toggleProperty(prop.id, prop.type)}
+                    onClick={() => toggleProperty(prop.type)}
                     className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
                       hasProperty
                         ? "bg-primary text-primary-foreground"
@@ -209,7 +207,7 @@ export function PropertyModal({
                 </div>
                 <button
                   onClick={() =>
-                    onUpdateProperty(block.id, "checkbox", {
+                    onUpdatePropertyByType(block.id, "checkbox", {
                       type: "checkbox",
                       checked: !isChecked,
                     })
@@ -241,7 +239,7 @@ export function PropertyModal({
                   <button
                     key={option.label}
                     onClick={() =>
-                      onUpdateProperty(block.id, "date", {
+                      onUpdatePropertyByType(block.id, "date", {
                         type: "date",
                         date: option.getValue(),
                       })
@@ -256,7 +254,7 @@ export function PropertyModal({
                 type="date"
                 value={dateValue}
                 onChange={(e) =>
-                  onUpdateProperty(block.id, "date", {
+                  onUpdatePropertyByType(block.id, "date", {
                     type: "date",
                     date: e.target.value,
                   })
@@ -278,7 +276,7 @@ export function PropertyModal({
                   <button
                     key={level}
                     onClick={() =>
-                      onUpdateProperty(block.id, "priority", {
+                      onUpdatePropertyByType(block.id, "priority", {
                         type: "priority",
                         level,
                       })
@@ -370,7 +368,7 @@ export function PropertyModal({
               <textarea
                 value={memoText}
                 onChange={(e) =>
-                  onUpdateProperty(block.id, "memo", {
+                  onUpdatePropertyByType(block.id, "memo", {
                     type: "memo",
                     text: e.target.value,
                   })
@@ -394,7 +392,7 @@ export function PropertyModal({
                   type="tel"
                   value={phone}
                   onChange={(e) =>
-                    onUpdateProperty(block.id, "contact", {
+                    onUpdatePropertyByType(block.id, "contact", {
                       type: "contact",
                       phone: e.target.value,
                       email,
@@ -407,7 +405,7 @@ export function PropertyModal({
                   type="email"
                   value={email}
                   onChange={(e) =>
-                    onUpdateProperty(block.id, "contact", {
+                    onUpdatePropertyByType(block.id, "contact", {
                       type: "contact",
                       phone,
                       email: e.target.value,
@@ -434,7 +432,7 @@ export function PropertyModal({
                     <button
                       key={type}
                       onClick={() =>
-                        onUpdateProperty(block.id, "repeat", {
+                        onUpdatePropertyByType(block.id, "repeat", {
                           type: "repeat",
                           config: repeatConfig?.type === type
                             ? null // 같은 타입 클릭 시 해제
@@ -462,7 +460,7 @@ export function PropertyModal({
                       max="365"
                       value={repeatConfig.interval}
                       onChange={(e) =>
-                        onUpdateProperty(block.id, "repeat", {
+                        onUpdatePropertyByType(block.id, "repeat", {
                           type: "repeat",
                           config: {
                             ...repeatConfig,
@@ -485,7 +483,7 @@ export function PropertyModal({
                 {repeatConfig && (
                   <button
                     onClick={() =>
-                      onUpdateProperty(block.id, "repeat", {
+                      onUpdatePropertyByType(block.id, "repeat", {
                         type: "repeat",
                         config: null,
                       })
@@ -504,11 +502,11 @@ export function PropertyModal({
             <p className="text-sm font-medium text-muted-foreground mb-3">더 추가하기</p>
             <div className="flex flex-wrap gap-2">
               {DEFAULT_PROPERTIES.filter(
-                (prop) => !block.properties.some((p) => p.propertyId === prop.id)
+                (prop) => !block.properties.some((p) => p.propertyType === prop.id)
               ).map((prop) => (
                 <button
                   key={prop.id}
-                  onClick={() => onAddProperty(block.id, prop.id, prop.type)}
+                  onClick={() => onAddProperty(block.id, prop.type)}
                   className="px-3 py-2 rounded-lg text-sm flex items-center gap-2 bg-accent/50 hover:bg-accent transition-colors"
                 >
                   <span>{prop.icon}</span>

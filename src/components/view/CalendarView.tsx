@@ -44,7 +44,7 @@ export function CalendarView({
   // 기간 일정 (endDate가 있는 블록)
   const periodBlocks = useMemo(() => {
     return blocks.filter((b) => {
-      const dateProp = b.properties.find((p) => p.propertyId === "date");
+      const dateProp = b.properties.find((p) => p.propertyType === "date");
       return dateProp?.value.type === "date" && dateProp.value.endDate;
     });
   }, [blocks]);
@@ -53,7 +53,7 @@ export function CalendarView({
   const getPeriodBlocksForDate = useCallback(
     (date: string) => {
       return periodBlocks.filter((b) => {
-        const dateProp = b.properties.find((p) => p.propertyId === "date");
+        const dateProp = b.properties.find((p) => p.propertyType === "date");
         if (dateProp?.value.type === "date" && dateProp.value.endDate) {
           return date >= dateProp.value.date && date <= dateProp.value.endDate;
         }
@@ -260,7 +260,7 @@ export function CalendarView({
               {periodBlocksOnDate.length > 0 && (
                 <div className="absolute top-7 left-0 right-0 space-y-0.5 px-0.5">
                   {periodBlocksOnDate.slice(0, 2).map((block) => {
-                    const dateProp = block.properties.find((p) => p.propertyId === "date");
+                    const dateProp = block.properties.find((p) => p.propertyType === "date");
                     const isStart = dateProp?.value.type === "date" && dateProp.value.date === date;
                     const isEnd = dateProp?.value.type === "date" && dateProp.value.endDate === date;
 
@@ -289,7 +289,7 @@ export function CalendarView({
                 <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
                   {blocksOnDate.slice(0, 3).map((block, i) => {
                     // 수업(학생 연결)인지 확인
-                    const hasPerson = block.properties.some((p) => p.propertyId === "person");
+                    const hasPerson = block.properties.some((p) => p.propertyType === "person");
                     return (
                       <span
                         key={i}

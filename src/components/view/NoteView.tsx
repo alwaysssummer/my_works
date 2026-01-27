@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -8,7 +8,7 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
-import { Block, BlockColumn } from "@/types/block";
+import { Block, BlockColumn, BlockProperty } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { saveImage, getImage } from "@/lib/imageStorage";
@@ -17,13 +17,17 @@ interface NoteViewProps {
   block: Block;
   allTags: Tag[];
   blockTypes: BlockType[];
+  contextBlocks?: Block[];
   onUpdateBlock: (id: string, content: string) => void;
-  onAddProperty: (blockId: string, propertyId: string, type: PropertyType) => void;
-  onUpdateProperty: (blockId: string, propertyId: string, value: unknown) => void;
+  onUpdateBlockName: (id: string, name: string) => void;
+  onAddProperty: (blockId: string, propertyType: PropertyType, name?: string) => void;
+  onUpdateProperty: (blockId: string, propertyId: string, value: BlockProperty["value"]) => void;
+  onUpdatePropertyName: (blockId: string, propertyId: string, name: string) => void;
   onRemoveProperty: (blockId: string, propertyId: string) => void;
   onCreateTag: (name: string, color: string) => Tag;
   onMoveToColumn?: (id: string, column: BlockColumn) => void;
   onDeleteBlock: (id: string) => void;
+  onNavigate?: (blockId: string | null) => void;
   onClose: () => void;
 }
 
@@ -50,16 +54,64 @@ export function NoteView({
   block,
   allTags,
   blockTypes,
+  contextBlocks = [],
   onUpdateBlock,
+  onUpdateBlockName,
   onAddProperty,
   onUpdateProperty,
+  onUpdatePropertyName,
   onRemoveProperty,
   onCreateTag,
   onMoveToColumn,
   onDeleteBlock,
+  onNavigate,
   onClose,
 }: NoteViewProps) {
+  const [blockName, setBlockName] = useState(block.name || "");
   const [showPropertyBar, setShowPropertyBar] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // 학생 블록 여부 판단 (contact 속성 존재)
+  const isStudentBlock = useMemo(() =>
+    block.properties.some(p => p.propertyType === "contact"),
+    [block.properties]
+  );
+
+  // 현재 블록의 인덱스 및 이전/다음 블록 계산
+  const currentIndex = useMemo(() =>
+    contextBlocks.findIndex((b) => b.id === block.id),
+    [contextBlocks, block.id]
+  );
+  const prevBlock = currentIndex > 0 ? contextBlocks[currentIndex - 1] : null;
+  const nextBlock = currentIndex < contextBlocks.length - 1 ? contextBlocks[currentIndex + 1] : null;
+  const hasNavigation = contextBlocks.length > 1;
+
+  // 이전 블록으로 이동
+  const handlePrevBlock = useCallback(() => {
+    if (prevBlock && onNavigate) {
+      onNavigate(prevBlock.id);
+    }
+  }, [prevBlock, onNavigate]);
+
+  // 다음 블록으로 이동
+  const handleNextBlock = useCallback(() => {
+    if (nextBlock && onNavigate) {
+      onNavigate(nextBlock.id);
+    }
+  }, [nextBlock, onNavigate]);
+
+  // 삭제 핸들러 (확인 포함)
+  const handleDelete = useCallback(() => {
+    const hasContent = block.content && block.content !== "<p></p>" && block.content.trim() !== "";
+    const hasName = block.name && block.name.trim() !== "";
+
+    if (hasContent || hasName) {
+      if (!confirm("이 블록을 삭제하시겠습니까?")) {
+        return;
+      }
+    }
+    onDeleteBlock(block.id);
+  }, [block.id, block.content, block.name, onDeleteBlock]);
   const [showTagInput, setShowTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
@@ -72,37 +124,37 @@ export function NoteView({
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
   const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
 
-  // 속성 값 가져오기
-  const getPropertyValue = useCallback(
-    (propertyId: string) => {
-      return block.properties.find((p) => p.propertyId === propertyId)?.value;
+  // 속성 타입으로 속성 찾기
+  const getPropertyByType = useCallback(
+    (propertyType: PropertyType) => {
+      return block.properties.find((p) => p.propertyType === propertyType);
     },
     [block.properties]
   );
 
-  // 속성 존재 여부
-  const hasProperty = useCallback(
-    (propertyId: string) => {
-      return block.properties.some((p) => p.propertyId === propertyId);
+  // 속성 타입 존재 여부
+  const hasPropertyType = useCallback(
+    (propertyType: PropertyType) => {
+      return block.properties.some((p) => p.propertyType === propertyType);
     },
     [block.properties]
   );
 
   // 체크박스
-  const checkboxValue = getPropertyValue("checkbox");
-  const isChecked = checkboxValue?.type === "checkbox" && checkboxValue.checked;
+  const checkboxProp = getPropertyByType("checkbox");
+  const isChecked = checkboxProp?.value?.type === "checkbox" && checkboxProp.value.checked;
 
   // 날짜
-  const dateValue = getPropertyValue("date");
-  const dateStr = dateValue?.type === "date" ? dateValue.date : "";
+  const dateProp = getPropertyByType("date");
+  const dateStr = dateProp?.value?.type === "date" ? dateProp.value.date : "";
 
   // 우선순위
-  const priorityValue = getPropertyValue("priority");
-  const priority: PriorityLevel = priorityValue?.type === "priority" ? priorityValue.level : "none";
+  const priorityProp = getPropertyByType("priority");
+  const priority: PriorityLevel = priorityProp?.value?.type === "priority" ? priorityProp.value.level : "none";
 
   // 태그
-  const tagValue = getPropertyValue("tag");
-  const tagIds: string[] = tagValue?.type === "tag" ? tagValue.tagIds : [];
+  const tagProp = getPropertyByType("tag");
+  const tagIds: string[] = tagProp?.value?.type === "tag" ? tagProp.value.tagIds : [];
   const blockTags = tagIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean);
 
   // Tiptap 에디터 설정 (Typora 스타일)
@@ -180,73 +232,124 @@ export function NoteView({
     }
   }, [block.content, editor]);
 
-  // ESC로 닫기, Ctrl+S 저장 피드백
+  // 키보드 단축키 (ESC 닫기, Alt+←/→ 이동, Ctrl+Backspace 삭제)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ESC: 닫기
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
+        return;
       }
+
+      // Ctrl+S: 저장 피드백 (자동 저장이지만 시각적 피드백용)
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
-        // 자동 저장이지만 시각적 피드백용
+        return;
+      }
+
+      // Alt+← 또는 Ctrl+[: 이전 블록
+      if ((e.altKey && e.key === "ArrowLeft") || (e.ctrlKey && e.key === "[")) {
+        e.preventDefault();
+        handlePrevBlock();
+        return;
+      }
+
+      // Alt+→ 또는 Ctrl+]: 다음 블록
+      if ((e.altKey && e.key === "ArrowRight") || (e.ctrlKey && e.key === "]")) {
+        e.preventDefault();
+        handleNextBlock();
+        return;
+      }
+
+      // Ctrl+Backspace: 삭제
+      if (e.ctrlKey && e.key === "Backspace") {
+        e.preventDefault();
+        handleDelete();
+        return;
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, handlePrevBlock, handleNextBlock, handleDelete]);
+
+  // 블록 이름 저장
+  const handleSaveBlockName = useCallback(() => {
+    if (blockName !== block.name) {
+      onUpdateBlockName(block.id, blockName);
+    }
+  }, [blockName, block.id, block.name, onUpdateBlockName]);
+
+  // 학생 블록이고 이름이 비어있으면 자동 포커스
+  useEffect(() => {
+    if (isStudentBlock && !block.name) {
+      // 약간의 딜레이 후 포커스 (렌더링 완료 대기)
+      const timer = setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isStudentBlock, block.name]);
 
   // 체크박스 토글
   const handleToggleCheckbox = useCallback(() => {
-    onUpdateProperty(block.id, "checkbox", { type: "checkbox", checked: !isChecked });
-  }, [block.id, isChecked, onUpdateProperty]);
+    if (checkboxProp) {
+      onUpdateProperty(block.id, checkboxProp.id, { type: "checkbox", checked: !isChecked });
+    }
+  }, [block.id, checkboxProp, isChecked, onUpdateProperty]);
 
   // 날짜 변경
   const handleDateChange = useCallback(
     (date: string) => {
-      onUpdateProperty(block.id, "date", { type: "date", date });
+      if (dateProp) {
+        onUpdateProperty(block.id, dateProp.id, { type: "date", date });
+      }
       setShowDatePicker(false);
     },
-    [block.id, onUpdateProperty]
+    [block.id, dateProp, onUpdateProperty]
   );
 
   // 우선순위 변경
   const handlePriorityChange = useCallback(
     (level: PriorityLevel) => {
-      onUpdateProperty(block.id, "priority", { type: "priority", level });
+      if (priorityProp) {
+        onUpdateProperty(block.id, priorityProp.id, { type: "priority", level });
+      }
       setShowPriorityPicker(false);
     },
-    [block.id, onUpdateProperty]
+    [block.id, priorityProp, onUpdateProperty]
   );
 
   // 태그 토글
   const handleToggleTag = useCallback(
     (tagId: string) => {
-      const newTagIds = tagIds.includes(tagId)
-        ? tagIds.filter((id) => id !== tagId)
-        : [...tagIds, tagId];
-      onUpdateProperty(block.id, "tag", { type: "tag", tagIds: newTagIds });
+      if (tagProp) {
+        const newTagIds = tagIds.includes(tagId)
+          ? tagIds.filter((id) => id !== tagId)
+          : [...tagIds, tagId];
+        onUpdateProperty(block.id, tagProp.id, { type: "tag", tagIds: newTagIds });
+      }
     },
-    [block.id, tagIds, onUpdateProperty]
+    [block.id, tagProp, tagIds, onUpdateProperty]
   );
 
   // 새 태그 생성
   const handleCreateTag = useCallback(() => {
-    if (newTagName.trim()) {
+    if (newTagName.trim() && tagProp) {
       const newTag = onCreateTag(newTagName.trim(), newTagColor);
       const newTagIds = [...tagIds, newTag.id];
-      onUpdateProperty(block.id, "tag", { type: "tag", tagIds: newTagIds });
+      onUpdateProperty(block.id, tagProp.id, { type: "tag", tagIds: newTagIds });
       setNewTagName("");
       setShowTagInput(false);
     }
-  }, [newTagName, newTagColor, tagIds, block.id, onCreateTag, onUpdateProperty]);
+  }, [newTagName, newTagColor, tagIds, tagProp, block.id, onCreateTag, onUpdateProperty]);
 
-  // 속성 추가
+  // 속성 추가 (노션 방식: 기본 이름으로 즉시 추가)
   const handleAddProperty = useCallback(
-    (propertyId: string) => {
-      const prop = DEFAULT_PROPERTIES.find((p) => p.id === propertyId);
+    (propertyType: PropertyType) => {
+      const prop = DEFAULT_PROPERTIES.find((p) => p.type === propertyType);
       if (prop) {
-        onAddProperty(block.id, propertyId, prop.type);
+        onAddProperty(block.id, propertyType, prop.name);
       }
       setShowAddProperty(false);
     },
@@ -262,13 +365,11 @@ export function NoteView({
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
-  // 추가 가능한 속성
-  const availableProperties = DEFAULT_PROPERTIES.filter(
-    (prop) => !hasProperty(prop.id)
-  );
+  // 모든 속성 유형 (같은 타입 여러 개 추가 가능)
+  const allPropertyTypes = DEFAULT_PROPERTIES;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div className="fixed top-0 right-0 bottom-0 left-60 z-50 bg-background flex flex-col">
       {/* 클릭 외부 닫기 핸들러 - DOM 순서상 가장 먼저 렌더링하여 드롭다운 아래에 위치 */}
       {(showDatePicker || showPropertyBar || showPriorityPicker || showAddProperty) && (
         <div
@@ -284,19 +385,46 @@ export function NoteView({
 
       {/* 상단 바 */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative z-10">
-        {/* 왼쪽: 돌아가기 버튼 */}
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <span>←</span>
-          <span>돌아가기</span>
-        </button>
+        {/* 왼쪽: 돌아가기 + 이전/다음 버튼 */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span>←</span>
+            <span>돌아가기</span>
+          </button>
+
+          {/* 이전/다음 이동 버튼 */}
+          {hasNavigation && (
+            <div className="flex items-center gap-1 ml-4 border-l border-border pl-4">
+              <button
+                onClick={handlePrevBlock}
+                disabled={!prevBlock}
+                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="이전 (Alt+←)"
+              >
+                <span className="text-sm">◀</span>
+              </button>
+              <span className="text-xs text-muted-foreground px-1">
+                {currentIndex + 1} / {contextBlocks.length}
+              </span>
+              <button
+                onClick={handleNextBlock}
+                disabled={!nextBlock}
+                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="다음 (Alt+→)"
+              >
+                <span className="text-sm">▶</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* 오른쪽: 속성 미니멀 표시 */}
         <div className="flex items-center gap-3">
           {/* 체크박스 */}
-          {hasProperty("checkbox") && (
+          {hasPropertyType("checkbox") && (
             <button
               onClick={handleToggleCheckbox}
               className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
@@ -311,7 +439,7 @@ export function NoteView({
           )}
 
           {/* 날짜 */}
-          {hasProperty("date") && (
+          {hasPropertyType("date") && (
             <div className="relative">
               <button
                 onClick={() => setShowDatePicker(!showDatePicker)}
@@ -374,7 +502,7 @@ export function NoteView({
           )}
 
           {/* 태그 */}
-          {hasProperty("tag") && (
+          {hasPropertyType("tag") && (
             <div className="relative">
               <button
                 onClick={() => setShowPropertyBar(!showPropertyBar)}
@@ -465,7 +593,7 @@ export function NoteView({
           )}
 
           {/* 우선순위 */}
-          {hasProperty("priority") && priority !== "none" && (
+          {hasPropertyType("priority") && priority !== "none" && (
             <div className="relative">
               <button
                 onClick={() => setShowPriorityPicker(!showPriorityPicker)}
@@ -494,37 +622,67 @@ export function NoteView({
           )}
 
           {/* 속성 추가 버튼 */}
-          {availableProperties.length > 0 && (
-            <div className="relative">
-              <button
-                onClick={() => setShowAddProperty(!showAddProperty)}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
-                title="속성 추가"
-              >
-                +
-              </button>
-              {showAddProperty && (
-                <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[140px]">
-                  {availableProperties.map((prop) => (
-                    <button
-                      key={prop.id}
-                      onClick={() => handleAddProperty(prop.id)}
-                      className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2"
-                    >
-                      <span>{prop.icon}</span>
-                      {prop.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="relative">
+            <button
+              onClick={() => setShowAddProperty(!showAddProperty)}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
+              title="속성 추가"
+            >
+              +
+            </button>
+            {showAddProperty && (
+              <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[140px]">
+                {allPropertyTypes.map((prop) => (
+                  <button
+                    key={prop.id}
+                    onClick={() => handleAddProperty(prop.type)}
+                    className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2"
+                  >
+                    <span>{prop.icon}</span>
+                    {prop.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 삭제 버튼 */}
+          <button
+            onClick={handleDelete}
+            className="text-sm text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10"
+            title="삭제 (Ctrl+Backspace)"
+          >
+            🗑️
+          </button>
         </div>
       </header>
 
       {/* 에디터 영역 - Typora 스타일 */}
       <main className="flex-1 overflow-auto">
         <div className="note-view max-w-3xl mx-auto px-16 py-12 min-h-full">
+          {/* 이름 입력 영역 */}
+          <div className="mb-6">
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={blockName}
+              onChange={(e) => setBlockName(e.target.value)}
+              onBlur={handleSaveBlockName}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  handleSaveBlockName();
+                  editor?.commands.focus();
+                }
+              }}
+              placeholder={isStudentBlock ? "학생 이름을 입력하세요" : "제목을 입력하세요..."}
+              className="w-full text-3xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
+            />
+            {isStudentBlock && (
+              <p className="text-xs text-muted-foreground mt-1">👤 학생</p>
+            )}
+          </div>
+
           <EditorContent
             editor={editor}
             className="prose prose-lg max-w-none
@@ -551,6 +709,8 @@ export function NoteView({
       <footer className="flex items-center justify-between px-6 py-2 border-t border-border text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
           <span>ESC 닫기</span>
+          {hasNavigation && <span>Alt+←/→ 이동</span>}
+          <span>Ctrl+Backspace 삭제</span>
           <span>자동 저장</span>
         </div>
         <div>

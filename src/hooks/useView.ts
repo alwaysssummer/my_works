@@ -49,7 +49,7 @@ export function filterBlocksByView(
       // 특정 태그가 있는 블록
       if (!view.tagId) return blocks;
       return blocks.filter((block) => {
-        const tagProperty = block.properties.find((p) => p.propertyId === "tag");
+        const tagProperty = block.properties.find((p) => p.propertyType === "tag");
         if (tagProperty?.value.type === "tag") {
           return tagProperty.value.tagIds.includes(view.tagId!);
         }
@@ -61,11 +61,11 @@ export function filterBlocksByView(
       if (!view.date) {
         // 날짜가 있는 모든 블록
         return blocks.filter((block) =>
-          block.properties.some((p) => p.propertyId === "date")
+          block.properties.some((p) => p.propertyType === "date")
         );
       }
       return blocks.filter((block) => {
-        const dateProperty = block.properties.find((p) => p.propertyId === "date");
+        const dateProperty = block.properties.find((p) => p.propertyType === "date");
         return dateProperty?.value.type === "date" && dateProperty.value.date === view.date;
       });
 
@@ -77,7 +77,7 @@ export function filterBlocksByView(
 
       return blocks.filter((block) =>
         customView.propertyIds.some((propId) =>
-          block.properties.some((p) => p.propertyId === propId)
+          block.properties.some((p) => p.propertyType === propId)
         )
       );
 
@@ -91,7 +91,7 @@ export function groupBlocksByDate(blocks: Block[]): Record<string, Block[]> {
   const grouped: Record<string, Block[]> = {};
 
   blocks.forEach((block) => {
-    const dateProperty = block.properties.find((p) => p.propertyId === "date");
+    const dateProperty = block.properties.find((p) => p.propertyType === "date");
     if (dateProperty?.value.type === "date" && dateProperty.value.date) {
       const date = dateProperty.value.date;
       if (!grouped[date]) {

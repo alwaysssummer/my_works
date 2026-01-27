@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Block } from "@/types/block";
+import { Block, BlockProperty } from "@/types/block";
+import { PropertyType } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
@@ -11,8 +12,7 @@ interface WeeklyScheduleProps {
   settings: ScheduleSettings;
   onAddBlock: (afterId?: string) => string;
   onUpdateBlock: (id: string, content: string) => void;
-  onAddProperty: (blockId: string, propertyId: string, type: string) => void;
-  onUpdateProperty: (blockId: string, propertyId: string, value: unknown) => void;
+  onAddProperty: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: BlockProperty["value"]) => void;
   onSelectBlock: (blockId: string) => void;
 }
 
@@ -42,7 +42,6 @@ export function WeeklySchedule({
   onAddBlock,
   onUpdateBlock,
   onAddProperty,
-  onUpdateProperty,
   onSelectBlock,
 }: WeeklyScheduleProps) {
   // 현재 주의 시작일 (월요일 기준)
@@ -66,7 +65,7 @@ export function WeeklySchedule({
   // 학생 블록 목록 (person 속성이 있는 블록)
   const studentBlocks = useMemo(() => {
     return blocks.filter((b) =>
-      b.properties.some((p) => p.propertyId === "person" || p.propertyId === "contact")
+      b.properties.some((p) => p.propertyType === "person" || p.propertyType === "contact")
     );
   }, [blocks]);
 
@@ -105,21 +104,22 @@ export function WeeklySchedule({
     const events: ScheduleEvent[] = [];
 
     blocks.forEach((block) => {
-      const dateProp = block.properties.find((p) => p.propertyId === "date");
+      const dateProp = block.properties.find((p) => p.propertyType === "date");
       if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.time) return;
 
       // 수업 시간 결정: 블록 duration > 학생 duration > 설정 기본값
       let duration = settings.defaultDuration;
 
-      const blockDuration = block.properties.find((p) => p.propertyId === "duration");
+      const blockDuration = block.properties.find((p) => p.propertyType === "duration");
       if (blockDuration?.value.type === "duration") {
         duration = blockDuration.value.minutes;
       } else {
         // 연결된 학생의 duration 확인
-        const personProp = block.properties.find((p) => p.propertyId === "person");
-        if (personProp?.value.type === "person" && personProp.value.blockIds.length > 0) {
-          const studentBlock = blocks.find((b) => b.id === personProp.value.blockIds[0]);
-          const studentDuration = studentBlock?.properties.find((p) => p.propertyId === "duration");
+        const personProp = block.properties.find((p) => p.propertyType === "person");
+        const personValue = personProp?.value;
+        if (personValue?.type === "person" && personValue.blockIds.length > 0) {
+          const studentBlock = blocks.find((b) => b.id === personValue.blockIds[0]);
+          const studentDuration = studentBlock?.properties.find((p) => p.propertyType === "duration");
           if (studentDuration?.value.type === "duration") {
             duration = studentDuration.value.minutes;
           }
@@ -128,9 +128,10 @@ export function WeeklySchedule({
 
       // 학생 이름 찾기
       let studentName: string | undefined;
-      const personProp = block.properties.find((p) => p.propertyId === "person");
-      if (personProp?.value.type === "person" && personProp.value.blockIds.length > 0) {
-        const studentBlock = blocks.find((b) => b.id === personProp.value.blockIds[0]);
+      const personProp2 = block.properties.find((p) => p.propertyType === "person");
+      const personValue2 = personProp2?.value;
+      if (personValue2?.type === "person" && personValue2.blockIds.length > 0) {
+        const studentBlock = blocks.find((b) => b.id === personValue2.blockIds[0]);
         if (studentBlock) {
           studentName = studentBlock.content.replace(/<[^>]*>/g, "").trim() || undefined;
         }
@@ -388,11 +389,11 @@ export function WeeklySchedule({
                   {events.map((event) => {
                     const { index, count } = getOverlapInfo(events, event);
                     const style = getEventStyle(event, index, count);
-                    const personProp = event.block.properties.find((p) => p.propertyId === "person");
+                    const personProp = event.block.properties.find((p) => p.propertyType === "person");
                     const studentId = personProp?.value.type === "person" ? personProp.value.blockIds[0] : null;
 
                     // 정규/비정규 구분 (repeat 속성 여부)
-                    const repeatProp = event.block.properties.find((p) => p.propertyId === "repeat");
+                    const repeatProp = event.block.properties.find((p) => p.propertyType === "repeat");
                     const isRegular = repeatProp?.value.type === "repeat" && repeatProp.value.config !== null;
 
                     // 학생 연결 여부로 수업/일정 구분
@@ -480,38 +481,29 @@ export function WeeklySchedule({
             onUpdateBlock(newBlockId, studentName);
 
             // 날짜/시간 속성 추가
-            onAddProperty(newBlockId, "date", "date");
-            setTimeout(() => {
-              onUpdateProperty(newBlockId, "date", {
-                type: "date",
-                date: addModalData.date,
-                time: time,
-              });
-            }, 0);
+            onAddProperty(newBlockId, "date", undefined, {
+              type: "date",
+              date: addModalData.date,
+              time: time,
+            });
 
             // 학생 연결
             if (studentId) {
-              onAddProperty(newBlockId, "person", "person");
-              setTimeout(() => {
-                onUpdateProperty(newBlockId, "person", {
-                  type: "person",
-                  blockIds: [studentId],
-                });
-              }, 0);
+              onAddProperty(newBlockId, "person", undefined, {
+                type: "person",
+                blockIds: [studentId],
+              });
             }
 
             // 수업 시간 (학생 기본값과 다른 경우만)
             if (studentBlock) {
-              const studentDuration = studentBlock.properties.find((p) => p.propertyId === "duration");
+              const studentDuration = studentBlock.properties.find((p) => p.propertyType === "duration");
               const studentDurationValue = studentDuration?.value.type === "duration" ? studentDuration.value.minutes : settings.defaultDuration;
               if (duration !== studentDurationValue) {
-                onAddProperty(newBlockId, "duration", "duration");
-                setTimeout(() => {
-                  onUpdateProperty(newBlockId, "duration", {
-                    type: "duration",
-                    minutes: duration,
-                  });
-                }, 0);
+                onAddProperty(newBlockId, "duration", undefined, {
+                  type: "duration",
+                  minutes: duration,
+                });
               }
             }
 
@@ -557,7 +549,7 @@ function AddLessonModal({
     setSelectedStudent(studentId);
     if (studentId) {
       const studentBlock = blocks.find((b) => b.id === studentId);
-      const studentDuration = studentBlock?.properties.find((p) => p.propertyId === "duration");
+      const studentDuration = studentBlock?.properties.find((p) => p.propertyType === "duration");
       if (studentDuration?.value.type === "duration") {
         setDuration(studentDuration.value.minutes);
       } else {

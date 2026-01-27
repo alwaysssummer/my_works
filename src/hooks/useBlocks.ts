@@ -1,9 +1,66 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Block, BlockColumn, createBlock, Top3History } from "@/types/block";
-import { BlockProperty, PropertyType, createPropertyValue } from "@/types/property";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Block, BlockColumn, Top3History } from "@/types/block";
+import { BlockProperty, PropertyType, createPropertyValue, DEFAULT_PROPERTIES, LegacyBlockProperty } from "@/types/property";
+import { supabase } from "@/lib/supabase";
 import { mockBlocks } from "@/data/mockData";
+
+// 기존 propertyId를 기본 이름으로 매핑
+function getDefaultPropertyName(propertyId: string): string {
+  const prop = DEFAULT_PROPERTIES.find((p) => p.id === propertyId);
+  return prop?.name || propertyId;
+}
+
+// 레거시 속성인지 확인 (propertyId가 있고 id가 없으면 레거시)
+function isLegacyProperty(prop: BlockProperty | LegacyBlockProperty): prop is LegacyBlockProperty {
+  return 'propertyId' in prop && !('id' in prop);
+}
+
+// 레거시 속성을 새 형식으로 변환
+function migrateProperty(prop: BlockProperty | LegacyBlockProperty): BlockProperty {
+  if (isLegacyProperty(prop)) {
+    return {
+      id: crypto.randomUUID(),
+      propertyType: prop.propertyId as PropertyType,
+      name: getDefaultPropertyName(prop.propertyId),
+      value: prop.value,
+    };
+  }
+  return prop;
+}
+
+// DB 형식 → 앱 형식 변환
+function dbToBlock(row: any): Block {
+  return {
+    id: row.id,
+    name: row.name || "",
+    content: row.content || "",
+    indent: row.indent || 0,
+    isCollapsed: row.is_collapsed || false,
+    isPinned: row.is_pinned || false,
+    column: row.column || "inbox",
+    properties: (row.properties || []).map(migrateProperty),
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+// 앱 형식 → DB 형식 변환
+function blockToDb(block: Block, sortOrder: number) {
+  return {
+    id: block.id,
+    name: block.name,
+    content: block.content,
+    indent: block.indent,
+    is_collapsed: block.isCollapsed,
+    is_pinned: block.isPinned,
+    column: block.column,
+    properties: block.properties,
+    sort_order: sortOrder,
+    updated_at: new Date().toISOString(),
+  };
+}
 
 const STORAGE_KEY = "blocknote-blocks";
 const TOP3_HISTORY_KEY = "blocknote-top3-history";
@@ -14,60 +71,88 @@ export function useBlocks() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [top3History, setTop3History] = useState<Top3History[]>([]);
+  const [useSupabase, setUseSupabase] = useState(false);
 
-  // 로컬 스토리지에서 불러오기 (없으면 목업 데이터)
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const savedHistory = localStorage.getItem(TOP3_HISTORY_KEY);
+  // 다중 선택 상태
+  const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
-    // TOP 3 히스토리 불러오기
-    if (savedHistory) {
-      try {
-        setTop3History(JSON.parse(savedHistory));
-      } catch {
-        setTop3History([]);
+  // Supabase 동기화를 위한 debounce용 ref
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSyncRef = useRef<Block[] | null>(null);
+
+  // Supabase에 블록 동기화 (debounced)
+  const syncToSupabase = useCallback(async (blocksToSync: Block[]) => {
+    if (!useSupabase) return;
+
+    try {
+      // 기존 블록 삭제 후 새로 삽입 (upsert 대신 - 순서 유지를 위해)
+      const { error: deleteError } = await supabase
+        .from("blocks")
+        .delete()
+        .is("user_id", null);
+
+      if (deleteError) {
+        console.error("Supabase 삭제 오류:", deleteError);
+        return;
       }
+
+      if (blocksToSync.length > 0) {
+        const dbBlocks = blocksToSync.map((block, index) => blockToDb(block, index));
+        const { error: insertError } = await supabase
+          .from("blocks")
+          .insert(dbBlocks);
+
+        if (insertError) {
+          console.error("Supabase 삽입 오류:", insertError);
+        }
+      }
+    } catch (err) {
+      console.error("Supabase 동기화 오류:", err);
+    }
+  }, [useSupabase]);
+
+  // debounced sync
+  const debouncedSync = useCallback((blocksToSync: Block[]) => {
+    pendingSyncRef.current = blocksToSync;
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
     }
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0) {
-          // slotIndex 마이그레이션을 위한 카운터
-          let slotCounter = 0;
+    syncTimeoutRef.current = setTimeout(() => {
+      if (pendingSyncRef.current) {
+        syncToSupabase(pendingSyncRef.current);
+        pendingSyncRef.current = null;
+      }
+    }, 1000); // 1초 debounce
+  }, [syncToSupabase]);
 
-          let loadedBlocks = parsed.map((b: Block) => ({
-            ...b,
-            indent: b.indent ?? 0,
-            isCollapsed: b.isCollapsed ?? false,
-            isPinned: b.isPinned ?? false,
-            column: b.column ?? "inbox",
-            properties: (b.properties ?? []).map((p: BlockProperty) => {
-              // urgent 속성에 slotIndex가 없으면 추가 (마이그레이션)
-              if (p.propertyId === "urgent" && p.value.type === "urgent" && p.value.slotIndex === undefined) {
-                return {
-                  ...p,
-                  value: {
-                    ...p.value,
-                    slotIndex: slotCounter++,
-                  },
-                };
-              }
-              return p;
-            }),
-            createdAt: new Date(b.createdAt),
-            updatedAt: new Date(b.updatedAt),
-          }));
+  // 초기 데이터 로드
+  useEffect(() => {
+    async function loadData() {
+      // 먼저 Supabase에서 시도
+      try {
+        const { data, error } = await supabase
+          .from("blocks")
+          .select("*")
+          .is("user_id", null)
+          .order("sort_order", { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          console.log("Supabase에서 블록 로드:", data.length);
+          setUseSupabase(true);
+
+          let loadedBlocks = data.map(dbToBlock);
 
           // 자정 지난 TOP 3 아카이브 처리
           const today = new Date().toISOString().split("T")[0];
           const expiredTop3: { id: string; content: string; completed: boolean }[] = [];
 
           loadedBlocks = loadedBlocks.map((block: Block) => {
-            const urgentProp = block.properties.find((p: BlockProperty) => p.propertyId === "urgent");
+            const urgentProp = block.properties.find((p: BlockProperty) => p.propertyType === "urgent");
             if (urgentProp?.value.type === "urgent" && urgentProp.value.addedAt < today) {
-              // 자정 지난 TOP 3 → 아카이브 대상
-              const checkboxProp = block.properties.find((p: BlockProperty) => p.propertyId === "checkbox");
+              const checkboxProp = block.properties.find((p: BlockProperty) => p.propertyType === "checkbox");
               const completed = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
 
               expiredTop3.push({
@@ -76,23 +161,20 @@ export function useBlocks() {
                 completed,
               });
 
-              // urgent 속성 제거
               return {
                 ...block,
-                properties: block.properties.filter((p: BlockProperty) => p.propertyId !== "urgent"),
+                properties: block.properties.filter((p: BlockProperty) => p.propertyType !== "urgent"),
               };
             }
             return block;
           });
 
-          // 어제 날짜로 히스토리에 추가
           if (expiredTop3.length > 0) {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayStr = yesterday.toISOString().split("T")[0];
 
             setTop3History((prev) => {
-              // 같은 날짜가 있으면 병합
               const existing = prev.find((h) => h.date === yesterdayStr);
               if (existing) {
                 return prev.map((h) =>
@@ -106,26 +188,137 @@ export function useBlocks() {
           }
 
           setBlocks(loadedBlocks);
-        } else {
+          setIsLoaded(true);
+          return;
+        }
+
+        // Supabase 테이블이 있지만 비어있으면 Supabase 사용
+        if (!error) {
+          console.log("Supabase 테이블 연결됨 (빈 상태)");
+          setUseSupabase(true);
+        }
+      } catch (err) {
+        console.log("Supabase 연결 실패, 로컬 스토리지 사용:", err);
+      }
+
+      // Supabase 실패 시 로컬 스토리지에서 로드
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const savedHistory = localStorage.getItem(TOP3_HISTORY_KEY);
+
+      if (savedHistory) {
+        try {
+          setTop3History(JSON.parse(savedHistory));
+        } catch {
+          setTop3History([]);
+        }
+      }
+
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.length > 0) {
+            let slotCounter = 0;
+
+            let loadedBlocks = parsed.map((b: Block & { properties?: (BlockProperty | LegacyBlockProperty)[] }) => ({
+              ...b,
+              name: b.name ?? "",
+              indent: b.indent ?? 0,
+              isCollapsed: b.isCollapsed ?? false,
+              isPinned: b.isPinned ?? false,
+              column: b.column ?? "inbox",
+              properties: (b.properties ?? []).map((p: BlockProperty | LegacyBlockProperty) => {
+                let prop = migrateProperty(p);
+                if (prop.propertyType === "urgent" && prop.value.type === "urgent" && prop.value.slotIndex === undefined) {
+                  return {
+                    ...prop,
+                    value: {
+                      ...prop.value,
+                      slotIndex: slotCounter++,
+                    },
+                  };
+                }
+                return prop;
+              }),
+              createdAt: new Date(b.createdAt),
+              updatedAt: new Date(b.updatedAt),
+            }));
+
+            const today = new Date().toISOString().split("T")[0];
+            const expiredTop3: { id: string; content: string; completed: boolean }[] = [];
+
+            loadedBlocks = loadedBlocks.map((block: Block) => {
+              const urgentProp = block.properties.find((p: BlockProperty) => p.propertyType === "urgent");
+              if (urgentProp?.value.type === "urgent" && urgentProp.value.addedAt < today) {
+                const checkboxProp = block.properties.find((p: BlockProperty) => p.propertyType === "checkbox");
+                const completed = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
+
+                expiredTop3.push({
+                  id: block.id,
+                  content: block.content,
+                  completed,
+                });
+
+                return {
+                  ...block,
+                  properties: block.properties.filter((p: BlockProperty) => p.propertyType !== "urgent"),
+                };
+              }
+              return block;
+            });
+
+            if (expiredTop3.length > 0) {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+              setTop3History((prev) => {
+                const existing = prev.find((h) => h.date === yesterdayStr);
+                if (existing) {
+                  return prev.map((h) =>
+                    h.date === yesterdayStr
+                      ? { ...h, blocks: [...h.blocks, ...expiredTop3] }
+                      : h
+                  );
+                }
+                return [...prev, { date: yesterdayStr, blocks: expiredTop3 }];
+              });
+            }
+
+            setBlocks(loadedBlocks);
+
+            // Supabase가 연결되어 있으면 로컬 데이터를 Supabase에 마이그레이션
+            if (useSupabase) {
+              syncToSupabase(loadedBlocks);
+            }
+          } else {
+            setBlocks(mockBlocks);
+          }
+        } catch {
           setBlocks(mockBlocks);
         }
-      } catch {
+      } else {
         setBlocks(mockBlocks);
       }
-    } else {
-      setBlocks(mockBlocks);
+      setIsLoaded(true);
     }
-    setIsLoaded(true);
+
+    loadData();
   }, []);
 
-  // 로컬 스토리지에 저장
+  // 블록 변경 시 저장
   useEffect(() => {
     if (isLoaded) {
+      // 로컬 스토리지에 항상 저장 (폴백용)
       localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
-    }
-  }, [blocks, isLoaded]);
 
-  // TOP 3 히스토리 저장
+      // Supabase에 동기화
+      if (useSupabase) {
+        debouncedSync(blocks);
+      }
+    }
+  }, [blocks, isLoaded, useSupabase, debouncedSync]);
+
+  // TOP 3 히스토리 저장 (로컬만, 나중에 Supabase 추가 가능)
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem(TOP3_HISTORY_KEY, JSON.stringify(top3History));
@@ -135,12 +328,11 @@ export function useBlocks() {
   // 현재 TOP 3 블록 조회 (슬롯 인덱스 기준 정렬)
   const top3Blocks = useMemo(() => {
     const urgentBlocks = blocks.filter((block) =>
-      block.properties.some((p) => p.propertyId === "urgent")
+      block.properties.some((p) => p.propertyType === "urgent")
     );
-    // slotIndex 기준으로 정렬
     return urgentBlocks.sort((a, b) => {
-      const urgentA = a.properties.find((p) => p.propertyId === "urgent");
-      const urgentB = b.properties.find((p) => p.propertyId === "urgent");
+      const urgentA = a.properties.find((p) => p.propertyType === "urgent");
+      const urgentB = b.properties.find((p) => p.propertyType === "urgent");
       const slotA = urgentA?.value.type === "urgent" ? urgentA.value.slotIndex : 0;
       const slotB = urgentB?.value.type === "urgent" ? urgentB.value.slotIndex : 0;
       return slotA - slotB;
@@ -150,22 +342,20 @@ export function useBlocks() {
   // TOP 3에 추가 (체크박스가 없으면 자동 추가)
   const addToTop3 = useCallback((blockId: string, slotIndex?: number) => {
     setBlocks((prev) => {
-      // 이미 TOP 3가 3개면 추가 불가
       const currentTop3 = prev.filter((b) =>
-        b.properties.some((p) => p.propertyId === "urgent")
+        b.properties.some((p) => p.propertyType === "urgent")
       );
 
       if (currentTop3.length >= MAX_TOP3) {
         return prev;
       }
 
-      // slotIndex가 지정되지 않으면 빈 슬롯 중 가장 작은 인덱스 사용
       let targetSlot = slotIndex;
       if (targetSlot === undefined) {
         const usedSlots = new Set(
           currentTop3
             .map((b) => {
-              const urgent = b.properties.find((p) => p.propertyId === "urgent");
+              const urgent = b.properties.find((p) => p.propertyType === "urgent");
               return urgent?.value.type === "urgent" ? urgent.value.slotIndex : -1;
             })
             .filter((i) => i >= 0)
@@ -180,22 +370,23 @@ export function useBlocks() {
 
       return prev.map((block) => {
         if (block.id !== blockId) return block;
-        // 이미 urgent 속성이 있으면 스킵
-        if (block.properties.some((p) => p.propertyId === "urgent")) return block;
+        if (block.properties.some((p) => p.propertyType === "urgent")) return block;
 
         const newProperties = [...block.properties];
 
-        // 체크박스가 없으면 추가
-        if (!newProperties.some((p) => p.propertyId === "checkbox")) {
+        if (!newProperties.some((p) => p.propertyType === "checkbox")) {
           newProperties.push({
-            propertyId: "checkbox",
+            id: crypto.randomUUID(),
+            propertyType: "checkbox",
+            name: "체크박스",
             value: { type: "checkbox" as const, checked: false },
           });
         }
 
-        // urgent 속성 추가 (슬롯 인덱스 포함)
         newProperties.push({
-          propertyId: "urgent",
+          id: crypto.randomUUID(),
+          propertyType: "urgent",
+          name: "긴급",
           value: {
             type: "urgent" as const,
             addedAt: new Date().toISOString().split("T")[0],
@@ -219,24 +410,24 @@ export function useBlocks() {
         if (block.id !== blockId) return block;
         return {
           ...block,
-          properties: block.properties.filter((p) => p.propertyId !== "urgent"),
+          properties: block.properties.filter((p) => p.propertyType !== "urgent"),
           updatedAt: new Date(),
         };
       })
     );
   }, []);
 
-  // 블록 추가 (afterId 없으면 맨 위에, 있으면 해당 블록 뒤에)
+  // 블록 추가
   const addBlock = useCallback((afterId?: string) => {
     const newBlockId = crypto.randomUUID();
 
     setBlocks((prev) => {
       let inheritedIndent = 0;
 
-      // afterId 없으면 맨 위에 추가
       if (!afterId || prev.length === 0) {
         const newBlock: Block = {
           id: newBlockId,
+          name: "",
           content: "",
           indent: inheritedIndent,
           isCollapsed: false,
@@ -253,6 +444,7 @@ export function useBlocks() {
       if (index === -1) {
         const newBlock: Block = {
           id: newBlockId,
+          name: "",
           content: "",
           indent: inheritedIndent,
           isCollapsed: false,
@@ -269,6 +461,7 @@ export function useBlocks() {
       const inheritedColumn = prev[index].column;
       const newBlock: Block = {
         id: newBlockId,
+        name: "",
         content: "",
         indent: inheritedIndent,
         isCollapsed: false,
@@ -307,16 +500,12 @@ export function useBlocks() {
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === id);
       if (index === -1) return prev;
-
-      // 첫 번째 블록은 들여쓰기 불가
       if (index === 0) return prev;
 
       const block = prev[index];
       const prevBlock = prev[index - 1];
 
-      // 이전 블록보다 최대 1단계만 더 들여쓰기 가능
       if (block.indent >= prevBlock.indent + 1) return prev;
-      // 최대 들여쓰기 제한
       if (block.indent >= MAX_INDENT) return prev;
 
       return prev.map((b) =>
@@ -349,23 +538,18 @@ export function useBlocks() {
     );
   }, []);
 
-  // 특정 블록의 하위 블록인지 확인 (접힌 블록의 하위 블록 숨기기용)
+  // 특정 블록의 하위 블록인지 확인
   const isChildOfCollapsed = useCallback(
     (blockIndex: number) => {
       if (blockIndex === 0) return false;
 
       const block = blocks[blockIndex];
-      // 이전 블록들을 역순으로 확인
       for (let i = blockIndex - 1; i >= 0; i--) {
         const prevBlock = blocks[i];
-        // 같은 레벨이거나 상위 레벨을 만나면
         if (prevBlock.indent < block.indent) {
-          // 그 블록이 접혀있으면 숨겨야 함
           if (prevBlock.isCollapsed) return true;
-          // 아니면 계속 상위로 확인
         }
         if (prevBlock.indent < block.indent - 1) {
-          // 더 상위 블록에서 접힘 확인
           continue;
         }
       }
@@ -387,7 +571,7 @@ export function useBlocks() {
     [blocks]
   );
 
-  // 이전 블록 ID 가져오기 (보이는 블록 기준)
+  // 이전 블록 ID 가져오기
   const getPrevBlockId = useCallback(
     (id: string) => {
       const index = blocks.findIndex((b) => b.id === id);
@@ -401,7 +585,7 @@ export function useBlocks() {
     [blocks, isChildOfCollapsed]
   );
 
-  // 다음 블록 ID 가져오기 (보이는 블록 기준)
+  // 다음 블록 ID 가져오기
   const getNextBlockId = useCallback(
     (id: string) => {
       const index = blocks.findIndex((b) => b.id === id);
@@ -416,21 +600,18 @@ export function useBlocks() {
   );
 
   // 블록에 속성 추가
-  // typeOrValue: PropertyType(문자열) 또는 PropertyValue(객체)
-  const addProperty = useCallback((blockId: string, propertyId: string, typeOrValue: PropertyType | BlockProperty["value"]) => {
+  const addProperty = useCallback((blockId: string, propertyType: PropertyType, name?: string, initialValue?: BlockProperty["value"]) => {
     setBlocks((prev) =>
       prev.map((block) => {
         if (block.id !== blockId) return block;
-        // 이미 같은 속성이 있으면 추가하지 않음
-        if (block.properties.some((p) => p.propertyId === propertyId)) return block;
 
-        // typeOrValue가 문자열이면 PropertyType, 객체면 PropertyValue
-        const value = typeof typeOrValue === "string"
-          ? createPropertyValue(typeOrValue)
-          : typeOrValue;
+        const value = initialValue ?? createPropertyValue(propertyType);
+        const propertyName = name || getDefaultPropertyName(propertyType);
 
         const newProperty: BlockProperty = {
-          propertyId,
+          id: crypto.randomUUID(),
+          propertyType,
+          name: propertyName,
           value,
         };
         return {
@@ -450,7 +631,45 @@ export function useBlocks() {
         return {
           ...block,
           properties: block.properties.map((p) =>
-            p.propertyId === propertyId ? { ...p, value } : p
+            p.id === propertyId ? { ...p, value } : p
+          ),
+          updatedAt: new Date(),
+        };
+      })
+    );
+  }, []);
+
+  // 블록 속성 값 업데이트 (propertyType 기반)
+  const updatePropertyByType = useCallback((blockId: string, propertyType: PropertyType, value: BlockProperty["value"]) => {
+    setBlocks((prev) =>
+      prev.map((block) => {
+        if (block.id !== blockId) return block;
+        let updated = false;
+        const newProperties = block.properties.map((p) => {
+          if (!updated && p.propertyType === propertyType) {
+            updated = true;
+            return { ...p, value };
+          }
+          return p;
+        });
+        return {
+          ...block,
+          properties: newProperties,
+          updatedAt: new Date(),
+        };
+      })
+    );
+  }, []);
+
+  // 속성 이름 업데이트
+  const updatePropertyName = useCallback((blockId: string, propertyId: string, name: string) => {
+    setBlocks((prev) =>
+      prev.map((block) => {
+        if (block.id !== blockId) return block;
+        return {
+          ...block,
+          properties: block.properties.map((p) =>
+            p.id === propertyId ? { ...p, name } : p
           ),
           updatedAt: new Date(),
         };
@@ -465,28 +684,63 @@ export function useBlocks() {
         if (block.id !== blockId) return block;
         return {
           ...block,
-          properties: block.properties.filter((p) => p.propertyId !== propertyId),
+          properties: block.properties.filter((p) => p.id !== propertyId),
           updatedAt: new Date(),
         };
       })
     );
   }, []);
 
-  // 블록에 타입 적용 (속성들 일괄 추가)
-  const applyType = useCallback((blockId: string, propertyIds: string[], types: PropertyType[]) => {
+  // 블록에서 속성 제거 (propertyType 기반)
+  const removePropertyByType = useCallback((blockId: string, propertyType: PropertyType) => {
+    setBlocks((prev) =>
+      prev.map((block) => {
+        if (block.id !== blockId) return block;
+        let removed = false;
+        const newProperties = block.properties.filter((p) => {
+          if (!removed && p.propertyType === propertyType) {
+            removed = true;
+            return false;
+          }
+          return true;
+        });
+        return {
+          ...block,
+          properties: newProperties,
+          updatedAt: new Date(),
+        };
+      })
+    );
+  }, []);
+
+  // 블록 이름 업데이트
+  const updateBlockName = useCallback((blockId: string, name: string) => {
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.id === blockId
+          ? { ...block, name, updatedAt: new Date() }
+          : block
+      )
+    );
+  }, []);
+
+  // 블록에 타입 적용
+  const applyType = useCallback((blockId: string, propertyTypes: PropertyType[], names?: string[]) => {
     setBlocks((prev) =>
       prev.map((block) => {
         if (block.id !== blockId) return block;
 
         const newProperties = [...block.properties];
 
-        propertyIds.forEach((propertyId, index) => {
-          // 이미 같은 속성이 있으면 스킵
-          if (newProperties.some((p) => p.propertyId === propertyId)) return;
+        propertyTypes.forEach((propertyType, index) => {
+          if (newProperties.some((p) => p.propertyType === propertyType)) return;
 
+          const propName = names?.[index] || getDefaultPropertyName(propertyType);
           newProperties.push({
-            propertyId,
-            value: createPropertyValue(types[index]),
+            id: crypto.randomUUID(),
+            propertyType,
+            name: propName,
+            value: createPropertyValue(propertyType),
           });
         });
 
@@ -535,7 +789,10 @@ export function useBlocks() {
       const duplicate: Block = {
         ...original,
         id: newBlockId,
-        properties: original.properties.map((p) => ({ ...p })),
+        properties: original.properties.map((p) => ({
+          ...p,
+          id: crypto.randomUUID(),
+        })),
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -552,8 +809,7 @@ export function useBlocks() {
   const deleteCompletedTodos = useCallback(() => {
     setBlocks((prev) =>
       prev.filter((block) => {
-        const checkbox = block.properties.find((p) => p.propertyId === "checkbox");
-        // 체크박스가 없거나 체크되지 않은 블록만 유지
+        const checkbox = block.properties.find((p) => p.propertyType === "checkbox");
         return !(checkbox?.value.type === "checkbox" && checkbox.value.checked);
       })
     );
@@ -581,9 +837,49 @@ export function useBlocks() {
     );
   }, []);
 
+  // 선택 모드 토글
+  const toggleSelectionMode = useCallback(() => {
+    setIsSelectionMode((prev) => {
+      if (prev) {
+        setSelectedBlockIds(new Set());
+      }
+      return !prev;
+    });
+  }, []);
+
+  // 개별 블록 선택 토글
+  const toggleBlockSelection = useCallback((id: string) => {
+    setSelectedBlockIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // 전체 선택
+  const selectAllBlocks = useCallback((blockIds: string[]) => {
+    setSelectedBlockIds(new Set(blockIds));
+  }, []);
+
+  // 선택 해제
+  const clearSelection = useCallback(() => {
+    setSelectedBlockIds(new Set());
+  }, []);
+
+  // 선택된 블록 일괄 삭제
+  const deleteSelectedBlocks = useCallback(() => {
+    setBlocks((prev) => prev.filter((block) => !selectedBlockIds.has(block.id)));
+    setSelectedBlockIds(new Set());
+  }, [selectedBlockIds]);
+
   return {
     blocks,
     isLoaded,
+    useSupabase, // Supabase 연결 상태 노출
     addBlock,
     updateBlock,
     deleteBlock,
@@ -596,7 +892,11 @@ export function useBlocks() {
     getNextBlockId,
     addProperty,
     updateProperty,
+    updatePropertyByType,
+    updatePropertyName,
     removeProperty,
+    removePropertyByType,
+    updateBlockName,
     applyType,
     moveBlockUp,
     moveBlockDown,
@@ -609,5 +909,13 @@ export function useBlocks() {
     top3History,
     addToTop3,
     removeFromTop3,
+    // 다중 선택 관련
+    selectedBlockIds,
+    isSelectionMode,
+    toggleSelectionMode,
+    toggleBlockSelection,
+    selectAllBlocks,
+    clearSelection,
+    deleteSelectedBlocks,
   };
 }

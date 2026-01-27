@@ -34,19 +34,19 @@ export function DraggableBlock({
     .trim() || "빈 블록";
 
   // 체크박스 상태
-  const checkbox = block.properties.find((p) => p.propertyId === "checkbox");
+  const checkbox = block.properties.find((p) => p.propertyType === "checkbox");
   const isChecked = checkbox?.value.type === "checkbox" && checkbox.value.checked;
 
   // 날짜
-  const dateProp = block.properties.find((p) => p.propertyId === "date");
+  const dateProp = block.properties.find((p) => p.propertyType === "date");
   const dateValue = dateProp?.value.type === "date" ? dateProp.value.date : null;
 
   // 우선순위
-  const priorityProp = block.properties.find((p) => p.propertyId === "priority");
+  const priorityProp = block.properties.find((p) => p.propertyType === "priority");
   const priority = priorityProp?.value.type === "priority" ? priorityProp.value.level : null;
 
   // 태그들
-  const tagProp = block.properties.find((p) => p.propertyId === "tag");
+  const tagProp = block.properties.find((p) => p.propertyType === "tag");
   const tagIds = tagProp?.value.type === "tag" ? tagProp.value.tagIds : [];
   const blockTags = tagIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean);
 

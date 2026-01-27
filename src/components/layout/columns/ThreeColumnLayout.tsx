@@ -27,8 +27,7 @@ interface ThreeColumnLayoutProps {
   onUpdateBlock: (id: string, content: string) => void;
   onMoveToColumn: (id: string, column: BlockColumn) => void;
   onOpenDetail: (id: string) => void;
-  onAddProperty?: (blockId: string, propertyId: string, type: PropertyType) => void;
-  onUpdateProperty?: (blockId: string, propertyId: string, value: any) => void;
+  onAddProperty?: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
   onCreateTag?: (name: string, color: string) => Tag;
 }
 
@@ -40,7 +39,6 @@ export function ThreeColumnLayout({
   onMoveToColumn,
   onOpenDetail,
   onAddProperty,
-  onUpdateProperty,
   onCreateTag,
 }: ThreeColumnLayoutProps) {
   const [activeBlock, setActiveBlock] = useState<Block | null>(null);
@@ -133,7 +131,6 @@ export function ThreeColumnLayout({
           onUpdateBlock={onUpdateBlock}
           onOpenDetail={onOpenDetail}
           onAddProperty={onAddProperty}
-          onUpdateProperty={onUpdateProperty}
           onCreateTag={onCreateTag}
         />
         <InboxColumn
@@ -143,7 +140,6 @@ export function ThreeColumnLayout({
           onUpdateBlock={onUpdateBlock}
           onOpenDetail={onOpenDetail}
           onAddProperty={onAddProperty}
-          onUpdateProperty={onUpdateProperty}
           onCreateTag={onCreateTag}
         />
         <QueueColumn

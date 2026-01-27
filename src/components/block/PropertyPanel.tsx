@@ -38,7 +38,7 @@ export function PropertyPanel({
 }: PropertyPanelProps) {
   // 속성 찾기 헬퍼
   const getProperty = useCallback(
-    (propertyId: string) => block.properties.find((p) => p.propertyId === propertyId),
+    (propertyId: string) => block.properties.find((p) => p.propertyType === propertyId),
     [block.properties]
   );
 
@@ -72,7 +72,7 @@ export function PropertyPanel({
 
   // 속성이 없는 것들
   const missingProperties = DEFAULT_PROPERTIES.filter(
-    (prop) => !block.properties.some((p) => p.propertyId === prop.id)
+    (prop) => !block.properties.some((p) => p.propertyType === prop.id)
   );
 
   const handleCheckboxToggle = useCallback(() => {

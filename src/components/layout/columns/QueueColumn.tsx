@@ -34,9 +34,9 @@ export function QueueColumn({
     };
 
     blocks.forEach((block) => {
-      const hasContact = block.properties.some((p) => p.propertyId === "contact");
-      const hasRepeat = block.properties.some((p) => p.propertyId === "repeat");
-      const hasCheckbox = block.properties.some((p) => p.propertyId === "checkbox");
+      const hasContact = block.properties.some((p) => p.propertyType === "contact");
+      const hasRepeat = block.properties.some((p) => p.propertyType === "repeat");
+      const hasCheckbox = block.properties.some((p) => p.propertyType === "checkbox");
 
       if (hasContact) {
         groups.students.push(block);

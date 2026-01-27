@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { Block, Top3History } from "@/types/block";
 import { X, Plus, ChevronRight, Clock, Flame, Search } from "lucide-react";
 import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
+import { useListNavigation } from "@/hooks/useListNavigation";
 
 interface DashboardProps {
   blocks: Block[];
@@ -62,7 +63,7 @@ export function Dashboard({
   // 슬롯 인덱스에 해당하는 블록 찾기
   const getBlockForSlot = (slotIndex: number): Block | undefined => {
     return top3Blocks.find((block) => {
-      const urgent = block.properties.find((p) => p.propertyId === "urgent");
+      const urgent = block.properties.find((p) => p.propertyType === "urgent");
       return urgent?.value.type === "urgent" && urgent.value.slotIndex === slotIndex;
     });
   };
@@ -92,12 +93,12 @@ export function Dashboard({
   const todaySchedule = useMemo(() => {
     return blocks
       .filter((block) => {
-        const dateProp = block.properties.find((p) => p.propertyId === "date");
+        const dateProp = block.properties.find((p) => p.propertyType === "date");
         return dateProp?.value.type === "date" && dateProp.value.date === today;
       })
       .sort((a, b) => {
-        const timeA = a.properties.find((p) => p.propertyId === "date")?.value;
-        const timeB = b.properties.find((p) => p.propertyId === "date")?.value;
+        const timeA = a.properties.find((p) => p.propertyType === "date")?.value;
+        const timeB = b.properties.find((p) => p.propertyType === "date")?.value;
         if (timeA?.type === "date" && timeB?.type === "date") {
           return (timeA.time || "").localeCompare(timeB.time || "");
         }
@@ -128,7 +129,7 @@ export function Dashboard({
 
   // 체크박스 토글
   const handleCheckboxToggle = (block: Block) => {
-    const checkboxProp = block.properties.find((p) => p.propertyId === "checkbox");
+    const checkboxProp = block.properties.find((p) => p.propertyType === "checkbox");
     if (checkboxProp?.value.type === "checkbox") {
       onToggleCheckbox(block.id, !checkboxProp.value.checked);
     }
@@ -136,9 +137,16 @@ export function Dashboard({
 
   // TOP 3가 완료되었는지 확인
   const isCompleted = (block: Block) => {
-    const checkboxProp = block.properties.find((p) => p.propertyId === "checkbox");
+    const checkboxProp = block.properties.find((p) => p.propertyType === "checkbox");
     return checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
   };
+
+  // 오늘 일정 키보드 탐색
+  const { focusedId, listRef } = useListNavigation({
+    items: todaySchedule,
+    onSelect: onSelectBlock,
+    enabled: !showTop3Selector && editingSlotIndex === null,
+  });
 
   return (
     <main className="flex-1 h-screen overflow-auto bg-background">
@@ -381,23 +389,29 @@ export function Dashboard({
           </div>
 
           {todaySchedule.length > 0 ? (
-            <div className="space-y-2">
+            <div ref={listRef} className="space-y-2">
               {todaySchedule.map((block) => {
-                const dateProp = block.properties.find((p) => p.propertyId === "date");
+                const dateProp = block.properties.find((p) => p.propertyType === "date");
                 const time =
                   dateProp?.value.type === "date" ? dateProp.value.time : undefined;
                 const checkboxProp = block.properties.find(
-                  (p) => p.propertyId === "checkbox"
+                  (p) => p.propertyType === "checkbox"
                 );
                 const checked =
                   checkboxProp?.value.type === "checkbox" &&
                   checkboxProp.value.checked;
+                const isFocused = block.id === focusedId;
 
                 return (
                   <div
                     key={block.id}
+                    data-list-item
                     onClick={() => onSelectBlock(block.id)}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/50 cursor-pointer transition-colors"
+                    className={`flex items-center gap-3 p-3 rounded-lg border bg-card cursor-pointer transition-colors ${
+                      isFocused
+                        ? "border-primary bg-primary/10 ring-2 ring-primary/50"
+                        : "border-border hover:bg-accent/50"
+                    }`}
                   >
                     {time && (
                       <span className="text-sm font-mono text-blue-600 w-14">

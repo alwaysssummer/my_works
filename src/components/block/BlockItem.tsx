@@ -8,8 +8,8 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
-import { Block } from "@/types/block";
-import { DEFAULT_PROPERTIES, PropertyType, Tag, PRIORITY_COLORS, PRIORITY_LABELS, PriorityLevel, RepeatConfig, REPEAT_LABELS } from "@/types/property";
+import { Block, getBlockDisplayName } from "@/types/block";
+import { DEFAULT_PROPERTIES, PropertyType, Tag, PRIORITY_COLORS, PRIORITY_LABELS, PriorityLevel, RepeatConfig, REPEAT_LABELS, BlockProperty } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { SlashMenu } from "./SlashMenu";
 import { saveImage, getImage } from "@/lib/imageStorage";
@@ -26,7 +26,7 @@ interface BlockItemProps {
   onIndent: (id: string) => void;
   onOutdent: (id: string) => void;
   onToggleCollapse: (id: string) => void;
-  onAddProperty: (id: string, propertyId: string, type: PropertyType) => void;
+  onAddProperty: (id: string, propertyType: PropertyType, name?: string) => void;
   onUpdateProperty: (id: string, propertyId: string, value: any) => void;
   onRemoveProperty: (id: string, propertyId: string) => void;
   onOpenPropertyPanel?: (id: string) => void;
@@ -42,6 +42,10 @@ interface BlockItemProps {
   onTogglePin?: (id: string) => void;
   frequentTags?: Tag[];
   isInboxView?: boolean;
+  // 다중 선택 관련
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelection?: (id: string) => void;
 }
 
 export function BlockItem({
@@ -71,6 +75,9 @@ export function BlockItem({
   onTogglePin,
   frequentTags = [],
   isInboxView = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelection,
 }: BlockItemProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showPropertyMenu, setShowPropertyMenu] = useState(false);
@@ -80,28 +87,28 @@ export function BlockItem({
   const [slashPosition, setSlashPosition] = useState({ top: 0, left: 0 });
 
   // 체크박스 속성 찾기
-  const checkboxProperty = block.properties.find((p) => p.propertyId === "checkbox");
+  const checkboxProperty = block.properties.find((p) => p.propertyType === "checkbox");
   const hasCheckbox = !!checkboxProperty;
   const isChecked = checkboxProperty?.value.type === "checkbox" && checkboxProperty.value.checked;
 
   // 날짜 속성 찾기
-  const dateProperty = block.properties.find((p) => p.propertyId === "date");
+  const dateProperty = block.properties.find((p) => p.propertyType === "date");
   const hasDate = !!dateProperty;
   const dateValue = dateProperty?.value.type === "date" ? dateProperty.value.date : "";
 
   // 태그 속성 찾기
-  const tagProperty = block.properties.find((p) => p.propertyId === "tag");
+  const tagProperty = block.properties.find((p) => p.propertyType === "tag");
   const hasTag = !!tagProperty;
   const tagIds = tagProperty?.value.type === "tag" ? tagProperty.value.tagIds : [];
   const blockTags = allTags.filter((tag) => tagIds.includes(tag.id));
 
   // 우선순위 속성 찾기
-  const priorityProperty = block.properties.find((p) => p.propertyId === "priority");
+  const priorityProperty = block.properties.find((p) => p.propertyType === "priority");
   const hasPriority = !!priorityProperty;
   const priorityLevel: PriorityLevel = priorityProperty?.value.type === "priority" ? priorityProperty.value.level : "none";
 
   // 반복 속성 찾기
-  const repeatProperty = block.properties.find((p) => p.propertyId === "repeat");
+  const repeatProperty = block.properties.find((p) => p.propertyType === "repeat");
   const hasRepeat = !!repeatProperty;
   const repeatConfig: RepeatConfig | null = repeatProperty?.value.type === "repeat" ? repeatProperty.value.config : null;
 
@@ -111,21 +118,25 @@ export function BlockItem({
   const handleDateChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       e.stopPropagation();
-      onUpdateProperty(block.id, "date", {
-        type: "date",
-        date: e.target.value,
-      });
+      if (dateProperty) {
+        onUpdateProperty(block.id, dateProperty.id, {
+          type: "date",
+          date: e.target.value,
+        });
+      }
     },
-    [block.id, onUpdateProperty]
+    [block.id, dateProperty, onUpdateProperty]
   );
 
   const handleRemoveDate = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onRemoveProperty(block.id, "date");
+      if (dateProperty) {
+        onRemoveProperty(block.id, dateProperty.id);
+      }
       setShowMenu(false);
     },
-    [block.id, onRemoveProperty]
+    [block.id, dateProperty, onRemoveProperty]
   );
 
   // 빠른 태그 추가 (빠른 분류용)
@@ -134,15 +145,17 @@ export function BlockItem({
       e.stopPropagation();
       // 태그 속성이 없으면 추가
       if (!hasTag) {
-        onAddProperty(block.id, "tag", "tag");
+        onAddProperty(block.id, "tag");
       }
       // 태그 값 업데이트 (기존 태그에 추가)
-      onUpdateProperty(block.id, "tag", {
-        type: "tag",
-        tagIds: [...tagIds, tagId],
-      });
+      if (tagProperty) {
+        onUpdateProperty(block.id, tagProperty.id, {
+          type: "tag",
+          tagIds: [...tagIds, tagId],
+        });
+      }
     },
-    [block.id, hasTag, tagIds, onAddProperty, onUpdateProperty]
+    [block.id, hasTag, tagProperty, tagIds, onAddProperty, onUpdateProperty]
   );
 
   // 빠른 타입 적용 (빠른 분류용)
@@ -279,8 +292,8 @@ export function BlockItem({
         // Ctrl+Enter: 체크박스 토글
         if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
           event.preventDefault();
-          if (hasCheckbox) {
-            onUpdateProperty(block.id, "checkbox", {
+          if (hasCheckbox && checkboxProperty) {
+            onUpdateProperty(block.id, checkboxProperty.id, {
               type: "checkbox",
               checked: !isChecked,
             });
@@ -402,7 +415,7 @@ export function BlockItem({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (checkboxProperty) {
-        onUpdateProperty(block.id, "checkbox", {
+        onUpdateProperty(block.id, checkboxProperty.id, {
           type: "checkbox",
           checked: !isChecked,
         });
@@ -412,9 +425,9 @@ export function BlockItem({
   );
 
   const handleAddProperty = useCallback(
-    (e: React.MouseEvent, propertyId: string, type: PropertyType) => {
+    (e: React.MouseEvent, propertyType: PropertyType) => {
       e.stopPropagation();
-      onAddProperty(block.id, propertyId, type);
+      onAddProperty(block.id, propertyType);
       setShowMenu(false);
       setShowPropertyMenu(false);
     },
@@ -424,19 +437,23 @@ export function BlockItem({
   const handleRemoveCheckbox = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onRemoveProperty(block.id, "checkbox");
+      if (checkboxProperty) {
+        onRemoveProperty(block.id, checkboxProperty.id);
+      }
       setShowMenu(false);
     },
-    [block.id, onRemoveProperty]
+    [block.id, checkboxProperty, onRemoveProperty]
   );
 
   const handleRemoveTag = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onRemoveProperty(block.id, "tag");
+      if (tagProperty) {
+        onRemoveProperty(block.id, tagProperty.id);
+      }
       setShowMenu(false);
     },
-    [block.id, onRemoveProperty]
+    [block.id, tagProperty, onRemoveProperty]
   );
 
   const handleOpenPanel = useCallback(
@@ -460,7 +477,7 @@ export function BlockItem({
 
   // 슬래시 메뉴에서 속성 추가
   const handleSlashAddProperty = useCallback(
-    (propertyId: string, type: PropertyType) => {
+    (propertyType: PropertyType) => {
       // 슬래시 명령어 제거
       if (editor) {
         const text = editor.getText();
@@ -473,7 +490,7 @@ export function BlockItem({
           onUpdate(block.id, cleanHtml);
         }
       }
-      onAddProperty(block.id, propertyId, type);
+      onAddProperty(block.id, propertyType);
       setShowSlashMenu(false);
     },
     [block.id, editor, onAddProperty, onUpdate]
@@ -502,19 +519,47 @@ export function BlockItem({
 
   const indentPadding = block.indent * 24;
 
-  // 이미 추가된 속성 제외
-  const availableProperties = DEFAULT_PROPERTIES.filter(
-    (prop) => !block.properties.some((p) => p.propertyId === prop.id)
+  // 속성 추가 메뉴용 (모든 타입 표시 - 같은 타입 여러 개 추가 가능)
+  const allPropertyTypes = DEFAULT_PROPERTIES;
+
+  // 선택 체크박스 토글
+  const handleSelectionToggle = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onToggleSelection?.(block.id);
+    },
+    [block.id, onToggleSelection]
   );
 
   return (
     <div
-      className="group relative py-1"
+      className={`group relative py-1 ${isSelected ? "bg-primary/10 rounded" : ""}`}
       style={{ paddingLeft: `${indentPadding}px` }}
     >
-      {/* 블록 메뉴 버튼 (호버 시 표시) */}
+      {/* 선택 모드 체크박스 */}
+      {isSelectionMode && (
+        <button
+          onClick={handleSelectionToggle}
+          className={`absolute top-2 w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${
+            isSelected
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-muted-foreground/50 hover:border-primary"
+          }`}
+          style={{ left: `${indentPadding - 28}px` }}
+        >
+          {isSelected && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <path d="M5 12l5 5L20 7" />
+            </svg>
+          )}
+        </button>
+      )}
+
+      {/* 블록 메뉴 버튼 (호버 시 표시, 선택 모드가 아닐 때만) */}
       <div
-        className="absolute left-0 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5"
+        className={`absolute left-0 top-2 transition-opacity flex items-center gap-0.5 ${
+          isSelectionMode ? "hidden" : "opacity-0 group-hover:opacity-100"
+        }`}
         style={{ marginLeft: `${indentPadding - 24}px` }}
       >
         <button
@@ -546,39 +591,37 @@ export function BlockItem({
           className="absolute left-0 top-8 bg-popover border border-border rounded-md shadow-md py-1 z-20 min-w-[150px]"
           style={{ marginLeft: `${indentPadding - 24}px` }}
         >
-          {/* 속성 추가 */}
-          {availableProperties.length > 0 && (
-            <div className="relative">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowPropertyMenu((prev) => !prev);
-                }}
-                className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center justify-between"
-              >
-                <span className="flex items-center gap-2">
-                  <span>➕</span>
-                  속성 추가
-                </span>
-                <span>▶</span>
-              </button>
+          {/* 속성 추가 (모든 타입 표시 - 같은 타입 여러 개 추가 가능) */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowPropertyMenu((prev) => !prev);
+              }}
+              className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center justify-between"
+            >
+              <span className="flex items-center gap-2">
+                <span>➕</span>
+                속성 추가
+              </span>
+              <span>▶</span>
+            </button>
 
-              {showPropertyMenu && (
-                <div className="absolute left-full top-0 ml-1 bg-popover border border-border rounded-md shadow-md py-1 min-w-[120px]">
-                  {availableProperties.map((prop) => (
-                    <button
-                      key={prop.id}
-                      onClick={(e) => handleAddProperty(e, prop.id, prop.type)}
-                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
-                    >
-                      <span>{prop.icon}</span>
-                      {prop.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+            {showPropertyMenu && (
+              <div className="absolute left-full top-0 ml-1 bg-popover border border-border rounded-md shadow-md py-1 min-w-[120px]">
+                {allPropertyTypes.map((prop) => (
+                  <button
+                    key={prop.id}
+                    onClick={(e) => handleAddProperty(e, prop.type)}
+                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent flex items-center gap-2"
+                  >
+                    <span>{prop.icon}</span>
+                    {prop.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 체크박스 제거 (있을 때만) */}
           {hasCheckbox && (

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Block, BlockColumn } from "@/types/block";
-import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES } from "@/types/property";
+import { Block, BlockColumn, getBlockDisplayName } from "@/types/block";
+import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES, BlockProperty } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 
 interface BlockDetailModalProps {
@@ -10,8 +10,10 @@ interface BlockDetailModalProps {
   allTags: Tag[];
   blockTypes: BlockType[];
   onUpdateBlock: (id: string, content: string) => void;
-  onAddProperty: (blockId: string, propertyId: string, type: PropertyType) => void;
+  onUpdateBlockName: (id: string, name: string) => void;
+  onAddProperty: (blockId: string, propertyType: PropertyType, name?: string) => void;
   onUpdateProperty: (blockId: string, propertyId: string, value: any) => void;
+  onUpdatePropertyName: (blockId: string, propertyId: string, name: string) => void;
   onRemoveProperty: (blockId: string, propertyId: string) => void;
   onCreateTag: (name: string, color: string) => Tag;
   onApplyType: (blockId: string, typeId: string) => void;
@@ -50,8 +52,10 @@ export function BlockDetailModal({
   allTags,
   blockTypes,
   onUpdateBlock,
+  onUpdateBlockName,
   onAddProperty,
   onUpdateProperty,
+  onUpdatePropertyName,
   onRemoveProperty,
   onCreateTag,
   onApplyType,
@@ -59,6 +63,8 @@ export function BlockDetailModal({
   onDeleteBlock,
   onClose,
 }: BlockDetailModalProps) {
+  // 블록 이름
+  const [blockName, setBlockName] = useState(block.name || "");
   // 블록 내용 (HTML에서 텍스트 추출)
   const [content, setContent] = useState(() => {
     return block.content.replace(/<[^>]+>/g, "").trim();
@@ -69,54 +75,63 @@ export function BlockDetailModal({
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [isPropertyExpanded, setIsPropertyExpanded] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // 오늘/내일/다음주 날짜
   const today = new Date().toISOString().split("T")[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
   const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
 
-  // 속성 값 가져오기
-  const getPropertyValue = useCallback(
-    (propertyId: string) => {
-      return block.properties.find((p) => p.propertyId === propertyId)?.value;
+  // 속성 타입으로 속성 찾기
+  const getPropertyByType = useCallback(
+    (propertyType: PropertyType): BlockProperty | undefined => {
+      return block.properties.find((p) => p.propertyType === propertyType);
+    },
+    [block.properties]
+  );
+
+  // 속성 타입 존재 여부
+  const hasPropertyType = useCallback(
+    (propertyType: PropertyType) => {
+      return block.properties.some((p) => p.propertyType === propertyType);
     },
     [block.properties]
   );
 
   // 체크박스
-  const checkboxValue = getPropertyValue("checkbox");
-  const isChecked = checkboxValue?.type === "checkbox" && checkboxValue.checked;
+  const checkboxProp = getPropertyByType("checkbox");
+  const isChecked = checkboxProp?.value?.type === "checkbox" && checkboxProp.value.checked;
 
   // 날짜
-  const dateValue = getPropertyValue("date");
-  const dateStr = dateValue?.type === "date" ? dateValue.date : "";
+  const dateProp = getPropertyByType("date");
+  const dateStr = dateProp?.value?.type === "date" ? dateProp.value.date : "";
 
   // 우선순위
-  const priorityValue = getPropertyValue("priority");
-  const priority: PriorityLevel = priorityValue?.type === "priority" ? priorityValue.level : "none";
+  const priorityProp = getPropertyByType("priority");
+  const priority: PriorityLevel = priorityProp?.value?.type === "priority" ? priorityProp.value.level : "none";
 
   // 태그
-  const tagValue = getPropertyValue("tag");
-  const tagIds: string[] = tagValue?.type === "tag" ? tagValue.tagIds : [];
+  const tagProp = getPropertyByType("tag");
+  const tagIds: string[] = tagProp?.value?.type === "tag" ? tagProp.value.tagIds : [];
   const blockTags = tagIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean);
 
   // 메모
-  const memoValue = getPropertyValue("memo");
-  const memoText = memoValue?.type === "memo" ? memoValue.text : "";
+  const memoProp = getPropertyByType("memo");
+  const memoText = memoProp?.value?.type === "memo" ? memoProp.value.text : "";
 
   // 연락처
-  const contactValue = getPropertyValue("contact");
-  const contactPhone = contactValue?.type === "contact" ? contactValue.phone : "";
-  const contactEmail = contactValue?.type === "contact" ? contactValue.email : "";
+  const contactProp = getPropertyByType("contact");
+  const contactPhone = contactProp?.value?.type === "contact" ? contactProp.value.phone : "";
+  const contactEmail = contactProp?.value?.type === "contact" ? contactProp.value.email : "";
 
-  // 속성 존재 여부
-  const hasProperty = useCallback(
-    (propertyId: string) => {
-      return block.properties.some((p) => p.propertyId === propertyId);
-    },
-    [block.properties]
-  );
+  // 블록 이름 저장
+  const handleSaveBlockName = useCallback(() => {
+    if (blockName !== block.name) {
+      onUpdateBlockName(block.id, blockName);
+    }
+  }, [blockName, block.id, block.name, onUpdateBlockName]);
 
   // 내용 저장
   const handleSaveContent = useCallback(() => {
@@ -127,77 +142,98 @@ export function BlockDetailModal({
 
   // 체크박스 토글
   const handleToggleCheckbox = useCallback(() => {
-    onUpdateProperty(block.id, "checkbox", { type: "checkbox", checked: !isChecked });
-  }, [block.id, isChecked, onUpdateProperty]);
+    if (checkboxProp) {
+      onUpdateProperty(block.id, checkboxProp.id, { type: "checkbox", checked: !isChecked });
+    }
+  }, [block.id, checkboxProp, isChecked, onUpdateProperty]);
 
   // 날짜 변경
   const handleDateChange = useCallback(
     (date: string) => {
-      onUpdateProperty(block.id, "date", { type: "date", date });
+      if (dateProp) {
+        onUpdateProperty(block.id, dateProp.id, { type: "date", date });
+      }
     },
-    [block.id, onUpdateProperty]
+    [block.id, dateProp, onUpdateProperty]
   );
 
   // 우선순위 변경
   const handlePriorityChange = useCallback(
     (level: PriorityLevel) => {
-      onUpdateProperty(block.id, "priority", { type: "priority", level });
+      if (priorityProp) {
+        onUpdateProperty(block.id, priorityProp.id, { type: "priority", level });
+      }
     },
-    [block.id, onUpdateProperty]
+    [block.id, priorityProp, onUpdateProperty]
   );
 
   // 태그 추가/제거
   const handleToggleTag = useCallback(
     (tagId: string) => {
-      const newTagIds = tagIds.includes(tagId)
-        ? tagIds.filter((id) => id !== tagId)
-        : [...tagIds, tagId];
-      onUpdateProperty(block.id, "tag", { type: "tag", tagIds: newTagIds });
+      if (tagProp) {
+        const newTagIds = tagIds.includes(tagId)
+          ? tagIds.filter((id) => id !== tagId)
+          : [...tagIds, tagId];
+        onUpdateProperty(block.id, tagProp.id, { type: "tag", tagIds: newTagIds });
+      }
     },
-    [block.id, tagIds, onUpdateProperty]
+    [block.id, tagProp, tagIds, onUpdateProperty]
   );
 
   // 새 태그 생성
   const handleCreateTag = useCallback(() => {
-    if (newTagName.trim()) {
+    if (newTagName.trim() && tagProp) {
       const newTag = onCreateTag(newTagName.trim(), newTagColor);
       const newTagIds = [...tagIds, newTag.id];
-      onUpdateProperty(block.id, "tag", { type: "tag", tagIds: newTagIds });
+      onUpdateProperty(block.id, tagProp.id, { type: "tag", tagIds: newTagIds });
       setNewTagName("");
       setShowTagInput(false);
     }
-  }, [newTagName, newTagColor, tagIds, block.id, onCreateTag, onUpdateProperty]);
+  }, [newTagName, newTagColor, tagIds, tagProp, block.id, onCreateTag, onUpdateProperty]);
 
   // 메모 변경
   const handleMemoChange = useCallback(
     (text: string) => {
-      onUpdateProperty(block.id, "memo", { type: "memo", text });
+      if (memoProp) {
+        onUpdateProperty(block.id, memoProp.id, { type: "memo", text });
+      }
     },
-    [block.id, onUpdateProperty]
+    [block.id, memoProp, onUpdateProperty]
   );
 
   // 연락처 변경
   const handleContactChange = useCallback(
     (field: "phone" | "email", value: string) => {
-      onUpdateProperty(block.id, "contact", {
-        type: "contact",
-        phone: field === "phone" ? value : contactPhone,
-        email: field === "email" ? value : contactEmail,
-      });
+      if (contactProp) {
+        onUpdateProperty(block.id, contactProp.id, {
+          type: "contact",
+          phone: field === "phone" ? value : contactPhone,
+          email: field === "email" ? value : contactEmail,
+        });
+      }
     },
-    [block.id, contactPhone, contactEmail, onUpdateProperty]
+    [block.id, contactProp, contactPhone, contactEmail, onUpdateProperty]
   );
 
-  // 속성 추가
+  // 속성 추가 (노션 방식: 기본 이름으로 즉시 추가)
   const handleAddProperty = useCallback(
-    (propertyId: string) => {
-      const prop = DEFAULT_PROPERTIES.find((p) => p.id === propertyId);
+    (propertyType: PropertyType) => {
+      const prop = DEFAULT_PROPERTIES.find((p) => p.type === propertyType);
       if (prop) {
-        onAddProperty(block.id, propertyId, prop.type);
+        onAddProperty(block.id, propertyType, prop.name);
       }
       setShowAddProperty(false);
     },
     [block.id, onAddProperty]
+  );
+
+  // 속성 이름 변경
+  const handlePropertyNameChange = useCallback(
+    (propertyId: string, name: string) => {
+      onUpdatePropertyName(block.id, propertyId, name);
+      setEditingPropertyId(null);
+    },
+    [block.id, onUpdatePropertyName]
   );
 
   // 열 이동
@@ -220,18 +256,17 @@ export function BlockDetailModal({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        handleSaveBlockName();
         handleSaveContent();
         onClose();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleSaveContent, onClose]);
+  }, [handleSaveBlockName, handleSaveContent, onClose]);
 
-  // 추가 가능한 속성
-  const availableProperties = DEFAULT_PROPERTIES.filter(
-    (prop) => !hasProperty(prop.id)
-  );
+  // 모든 속성 유형 (같은 타입 여러 개 추가 가능)
+  const allPropertyTypes = DEFAULT_PROPERTIES;
 
   // 속성 개수 계산
   const propertyCount = block.properties.length;
@@ -257,14 +292,24 @@ export function BlockDetailModal({
 
       {/* 모달 - 노션 스타일 */}
       <div className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-6xl h-[85vh] overflow-hidden flex flex-col mx-6">
-        {/* 미니멀 헤더 - 닫기 버튼만 */}
-        <div className="flex items-center justify-end px-3 py-2 border-b border-border">
+        {/* 헤더 - 블록 이름 입력 + 닫기 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <input
+            ref={nameInputRef}
+            type="text"
+            value={blockName}
+            onChange={(e) => setBlockName(e.target.value)}
+            onBlur={handleSaveBlockName}
+            placeholder="블록 이름을 입력하세요..."
+            className="flex-1 bg-transparent text-lg font-medium focus:outline-none placeholder:text-muted-foreground/50"
+          />
           <button
             onClick={() => {
+              handleSaveBlockName();
               handleSaveContent();
               onClose();
             }}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors ml-2"
           >
             <span className="text-base">✕</span>
           </button>
@@ -285,18 +330,18 @@ export function BlockDetailModal({
             {/* 인라인 속성 요약 */}
             {!isPropertyExpanded && propertyCount > 0 && (
               <div className="flex items-center gap-3 text-sm ml-2">
-                {hasProperty("date") && dateStr && (
+                {hasPropertyType("date") && dateStr && (
                   <span className="text-muted-foreground">📅 {getDateDisplayText()}</span>
                 )}
-                {hasProperty("tag") && blockTags.length > 0 && (
+                {hasPropertyType("tag") && blockTags.length > 0 && (
                   <span className="text-muted-foreground">
                     🏷️ {blockTags.map(t => t?.name).join(", ")}
                   </span>
                 )}
-                {hasProperty("priority") && priority !== "none" && (
+                {hasPropertyType("priority") && priority !== "none" && (
                   <span className="text-muted-foreground">⚡ {PRIORITY_LABELS[priority]}</span>
                 )}
-                {hasProperty("checkbox") && (
+                {hasPropertyType("checkbox") && (
                   <span className="text-muted-foreground">{isChecked ? "☑" : "☐"}</span>
                 )}
               </div>
@@ -308,9 +353,32 @@ export function BlockDetailModal({
             <div className="px-4 pb-3 space-y-2">
 
             {/* 체크박스 */}
-            {hasProperty("checkbox") && (
+            {checkboxProp && (
               <div className="flex items-center justify-between py-2">
-                <span className="text-sm">☑ 체크박스</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">☑</span>
+                  {editingPropertyId === checkboxProp.id ? (
+                    <input
+                      type="text"
+                      defaultValue={checkboxProp.name}
+                      autoFocus
+                      className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                      onBlur={(e) => handlePropertyNameChange(checkboxProp.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handlePropertyNameChange(checkboxProp.id, e.currentTarget.value);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingPropertyId(checkboxProp.id)}
+                      className="text-sm hover:bg-accent/50 px-1 rounded"
+                    >
+                      {checkboxProp.name}
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={handleToggleCheckbox}
                   className={`w-5 h-5 rounded border flex items-center justify-center ${
@@ -325,10 +393,33 @@ export function BlockDetailModal({
             )}
 
             {/* 날짜 */}
-            {hasProperty("date") && (
+            {dateProp && (
               <div className="py-2">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm">📅 날짜</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📅</span>
+                    {editingPropertyId === dateProp.id ? (
+                      <input
+                        type="text"
+                        defaultValue={dateProp.name}
+                        autoFocus
+                        className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                        onBlur={(e) => handlePropertyNameChange(dateProp.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handlePropertyNameChange(dateProp.id, e.currentTarget.value);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setEditingPropertyId(dateProp.id)}
+                        className="text-sm hover:bg-accent/50 px-1 rounded"
+                      >
+                        {dateProp.name}
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="date"
                     value={dateStr}
@@ -380,9 +471,32 @@ export function BlockDetailModal({
             )}
 
             {/* 우선순위 */}
-            {hasProperty("priority") && (
+            {priorityProp && (
               <div className="py-2">
-                <span className="text-sm block mb-2">⚡ 우선순위</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm">⚡</span>
+                  {editingPropertyId === priorityProp.id ? (
+                    <input
+                      type="text"
+                      defaultValue={priorityProp.name}
+                      autoFocus
+                      className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                      onBlur={(e) => handlePropertyNameChange(priorityProp.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handlePropertyNameChange(priorityProp.id, e.currentTarget.value);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingPropertyId(priorityProp.id)}
+                      className="text-sm hover:bg-accent/50 px-1 rounded"
+                    >
+                      {priorityProp.name}
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   {PRIORITY_OPTIONS.map((opt) => (
                     <button
@@ -403,9 +517,32 @@ export function BlockDetailModal({
             )}
 
             {/* 태그 */}
-            {hasProperty("tag") && (
+            {tagProp && (
               <div className="py-2">
-                <span className="text-sm block mb-2">🏷️ 태그</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm">🏷️</span>
+                  {editingPropertyId === tagProp.id ? (
+                    <input
+                      type="text"
+                      defaultValue={tagProp.name}
+                      autoFocus
+                      className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                      onBlur={(e) => handlePropertyNameChange(tagProp.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handlePropertyNameChange(tagProp.id, e.currentTarget.value);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingPropertyId(tagProp.id)}
+                      className="text-sm hover:bg-accent/50 px-1 rounded"
+                    >
+                      {tagProp.name}
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {allTags.map((tag) => (
                     <button
@@ -467,9 +604,32 @@ export function BlockDetailModal({
             )}
 
             {/* 메모 */}
-            {hasProperty("memo") && (
+            {memoProp && (
               <div className="py-2">
-                <span className="text-sm block mb-2">📝 메모</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm">📝</span>
+                  {editingPropertyId === memoProp.id ? (
+                    <input
+                      type="text"
+                      defaultValue={memoProp.name}
+                      autoFocus
+                      className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                      onBlur={(e) => handlePropertyNameChange(memoProp.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handlePropertyNameChange(memoProp.id, e.currentTarget.value);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingPropertyId(memoProp.id)}
+                      className="text-sm hover:bg-accent/50 px-1 rounded"
+                    >
+                      {memoProp.name}
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={memoText}
                   onChange={(e) => handleMemoChange(e.target.value)}
@@ -481,9 +641,32 @@ export function BlockDetailModal({
             )}
 
             {/* 연락처 */}
-            {hasProperty("contact") && (
+            {contactProp && (
               <div className="py-2">
-                <span className="text-sm block mb-2">📞 연락처</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm">📞</span>
+                  {editingPropertyId === contactProp.id ? (
+                    <input
+                      type="text"
+                      defaultValue={contactProp.name}
+                      autoFocus
+                      className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                      onBlur={(e) => handlePropertyNameChange(contactProp.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handlePropertyNameChange(contactProp.id, e.currentTarget.value);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingPropertyId(contactProp.id)}
+                      className="text-sm hover:bg-accent/50 px-1 rounded"
+                    >
+                      {contactProp.name}
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <input
                     type="tel"
@@ -503,7 +686,7 @@ export function BlockDetailModal({
               </div>
             )}
 
-            {/* 속성 추가 버튼 */}
+            {/* 속성 추가 버튼 (노션 방식: 같은 타입 여러 개 추가 가능) */}
             <div className="pt-2">
               {!showAddProperty ? (
                 <button
@@ -514,10 +697,10 @@ export function BlockDetailModal({
                 </button>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {availableProperties.map((prop) => (
+                  {allPropertyTypes.map((prop) => (
                     <button
                       key={prop.id}
-                      onClick={() => handleAddProperty(prop.id)}
+                      onClick={() => handleAddProperty(prop.type)}
                       className="text-xs px-2 py-1 rounded bg-accent hover:bg-accent/80"
                     >
                       {prop.icon} {prop.name}

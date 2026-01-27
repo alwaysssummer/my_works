@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Block } from "@/types/block";
 import { BlockType } from "@/types/blockType";
 import { Tag } from "@/types/property";
 import { Plus, Phone, Mail, ChevronRight, Search, X, Users, BookOpen, UserPlus, Trophy } from "lucide-react";
+import { useListNavigation } from "@/hooks/useListNavigation";
 
 interface StudentListViewProps {
   blocks: Block[];
@@ -21,26 +22,12 @@ export function StudentListView({
   onSelectBlock,
   onAddStudent,
 }: StudentListViewProps) {
-  // 학생 타입 ID 찾기
-  const studentTypeId = useMemo(() => {
-    const studentType = blockTypes.find((t) => t.name === "학생");
-    return studentType?.id;
-  }, [blockTypes]);
-
-  // 학생 블록만 필터링
+  // 학생 블록만 필터링 (contact 속성이 있는 블록을 학생으로 간주)
   const studentBlocks = useMemo(() => {
-    if (!studentTypeId) {
-      // 학생 타입이 없으면 contact 속성이 있는 블록을 학생으로 간주
-      return blocks.filter((b) =>
-        b.properties.some((p) => p.propertyId === "contact")
-      );
-    }
     return blocks.filter((b) =>
-      b.properties.some(
-        (p) => p.propertyId === "blockType" && p.value.type === "text" && p.value.text === studentTypeId
-      )
+      b.properties.some((p) => p.propertyType === "contact")
     );
-  }, [blocks, studentTypeId]);
+  }, [blocks]);
 
   // 블록 내용에서 텍스트만 추출
   const getPlainText = (html: string) => {
@@ -52,8 +39,8 @@ export function StudentListView({
 
   // 학생의 태그 가져오기
   const getStudentTags = (block: Block) => {
-    const tagProp = block.properties.find((p) => p.propertyId === "tag");
-    if (tagProp?.value.type === "tag") {
+    const tagProp = block.properties.find((p) => p.propertyType === "tag");
+    if (tagProp?.value?.type === "tag") {
       return tagProp.value.tagIds
         .map((id) => tags.find((t) => t.id === id))
         .filter(Boolean) as Tag[];
@@ -63,8 +50,8 @@ export function StudentListView({
 
   // 학생의 연락처 가져오기
   const getContact = (block: Block) => {
-    const contactProp = block.properties.find((p) => p.propertyId === "contact");
-    if (contactProp?.value.type === "contact") {
+    const contactProp = block.properties.find((p) => p.propertyType === "contact");
+    if (contactProp?.value?.type === "contact") {
       return contactProp.value;
     }
     return null;
@@ -73,8 +60,8 @@ export function StudentListView({
   // 학생의 수업 수 계산
   const getLessonCount = (studentId: string) => {
     return blocks.filter((b) => {
-      const personProp = b.properties.find((p) => p.propertyId === "person");
-      return personProp?.value.type === "person" && personProp.value.blockIds.includes(studentId);
+      const personProp = b.properties.find((p) => p.propertyType === "person");
+      return personProp?.value?.type === "person" && personProp.value.blockIds.includes(studentId);
     }).length;
   };
 
@@ -109,9 +96,13 @@ export function StudentListView({
   // 1) 총 학생 수 & 이번달 신규
   const totalStats = useMemo(() => {
     const thisMonth = new Date().toISOString().slice(0, 7);
-    const newThisMonth = studentBlocks.filter((b) =>
-      b.createdAt?.startsWith(thisMonth)
-    ).length;
+    const newThisMonth = studentBlocks.filter((b) => {
+      if (!b.createdAt) return false;
+      const createdStr = b.createdAt instanceof Date
+        ? b.createdAt.toISOString()
+        : String(b.createdAt);
+      return createdStr.slice(0, 7) === thisMonth;
+    }).length;
     return { total: studentBlocks.length, newThisMonth };
   }, [studentBlocks]);
 
@@ -122,12 +113,12 @@ export function StudentListView({
     const weekEnd = getWeekEnd(today);
 
     return blocks.filter((b) => {
-      const dateProp = b.properties.find((p) => p.propertyId === "date");
-      const personProp = b.properties.find((p) => p.propertyId === "person");
+      const dateProp = b.properties.find((p) => p.propertyType === "date");
+      const personProp = b.properties.find((p) => p.propertyType === "person");
       if (!dateProp || !personProp) return false;
 
-      const dateValue = dateProp.value.type === "date" ? dateProp.value.date : undefined;
-      const hasStudent = personProp.value.type === "person" && personProp.value.blockIds.length > 0;
+      const dateValue = dateProp.value?.type === "date" ? dateProp.value.date : undefined;
+      const hasStudent = personProp.value?.type === "person" && personProp.value.blockIds.length > 0;
 
       return hasStudent && isDateInRange(dateValue, weekStart, weekEnd);
     }).length;
@@ -142,12 +133,12 @@ export function StudentListView({
     const weekEnd = getWeekEnd(lastWeekDate);
 
     return blocks.filter((b) => {
-      const dateProp = b.properties.find((p) => p.propertyId === "date");
-      const personProp = b.properties.find((p) => p.propertyId === "person");
+      const dateProp = b.properties.find((p) => p.propertyType === "date");
+      const personProp = b.properties.find((p) => p.propertyType === "person");
       if (!dateProp || !personProp) return false;
 
-      const dateValue = dateProp.value.type === "date" ? dateProp.value.date : undefined;
-      const hasStudent = personProp.value.type === "person" && personProp.value.blockIds.length > 0;
+      const dateValue = dateProp.value?.type === "date" ? dateProp.value.date : undefined;
+      const hasStudent = personProp.value?.type === "person" && personProp.value.blockIds.length > 0;
 
       return hasStudent && isDateInRange(dateValue, weekStart, weekEnd);
     }).length;
@@ -156,8 +147,8 @@ export function StudentListView({
   // 3) 연락처 등록 비율
   const contactStats = useMemo(() => {
     const withContact = studentBlocks.filter((b) => {
-      const contact = b.properties.find((p) => p.propertyId === "contact");
-      return contact?.value.type === "contact" && (contact.value.phone || contact.value.email);
+      const contact = b.properties.find((p) => p.propertyType === "contact");
+      return contact?.value?.type === "contact" && (contact.value.phone || contact.value.email);
     }).length;
     return { count: withContact, total: studentBlocks.length };
   }, [studentBlocks]);
@@ -166,8 +157,8 @@ export function StudentListView({
   const tagDistribution = useMemo(() => {
     const dist: Record<string, { count: number; color: string }> = {};
     studentBlocks.forEach((b) => {
-      const tagProp = b.properties.find((p) => p.propertyId === "tag");
-      if (tagProp?.value.type === "tag" && tagProp.value.tagIds.length > 0) {
+      const tagProp = b.properties.find((p) => p.propertyType === "tag");
+      if (tagProp?.value?.type === "tag" && tagProp.value.tagIds.length > 0) {
         tagProp.value.tagIds.forEach((id) => {
           const tag = tags.find((t) => t.id === id);
           if (tag) {
@@ -202,12 +193,12 @@ export function StudentListView({
     return studentBlocks
       .filter((s) => {
         if (searchQuery) {
-          const name = getPlainText(s.content).toLowerCase();
-          if (!name.includes(searchQuery.toLowerCase())) return false;
+          const displayName = (s.name || getPlainText(s.content)).toLowerCase();
+          if (!displayName.includes(searchQuery.toLowerCase())) return false;
         }
         if (selectedTag) {
-          const tagProp = s.properties.find((p) => p.propertyId === "tag");
-          if (tagProp?.value.type !== "tag" || !tagProp.value.tagIds.includes(selectedTag)) {
+          const tagProp = s.properties.find((p) => p.propertyType === "tag");
+          if (tagProp?.value?.type !== "tag" || !tagProp.value.tagIds.includes(selectedTag)) {
             return false;
           }
         }
@@ -220,8 +211,8 @@ export function StudentListView({
   const availableTags = useMemo(() => {
     const tagIds = new Set<string>();
     studentBlocks.forEach((b) => {
-      const tagProp = b.properties.find((p) => p.propertyId === "tag");
-      if (tagProp?.value.type === "tag") {
+      const tagProp = b.properties.find((p) => p.propertyType === "tag");
+      if (tagProp?.value?.type === "tag") {
         tagProp.value.tagIds.forEach((id) => tagIds.add(id));
       }
     });
@@ -234,6 +225,13 @@ export function StudentListView({
   const contactRate = contactStats.total > 0
     ? Math.round((contactStats.count / contactStats.total) * 100)
     : 0;
+
+  // 키보드 탐색 훅
+  const { focusedId, listRef } = useListNavigation({
+    items: filteredStudents,
+    onSelect: onSelectBlock,
+    enabled: true,
+  });
 
   return (
     <main className="flex-1 h-screen overflow-auto bg-background">
@@ -346,7 +344,7 @@ export function StudentListView({
               <div className="space-y-3">
                 {topStudents.map((item, i) => {
                   const studentTags = getStudentTags(item.student);
-                  const name = getPlainText(item.student.content) || "이름 없음";
+                  const name = item.student.name || getPlainText(item.student.content) || "이름 없음";
                   const tagText = studentTags.length > 0 ? studentTags[0].name : "";
 
                   return (
@@ -430,77 +428,55 @@ export function StudentListView({
             </div>
           </div>
 
-          {/* 학생 카드 그리드 */}
-          <div className="p-4">
+          {/* 학생 목록 (1열) */}
+          <div ref={listRef} className="divide-y divide-border">
             {filteredStudents.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <>
                 {filteredStudents.map((student) => {
                   const studentTags = getStudentTags(student);
                   const contact = getContact(student);
                   const lessonCount = getLessonCount(student.id);
+                  const isFocused = student.id === focusedId;
 
                   return (
                     <div
                       key={student.id}
+                      data-list-item
                       onClick={() => onSelectBlock(student.id)}
-                      className="p-4 rounded-xl border border-border bg-background hover:bg-accent/50 cursor-pointer transition-colors group"
+                      className={`px-4 py-3 cursor-pointer transition-colors flex items-center gap-3 group ${
+                        isFocused
+                          ? "bg-primary/10 ring-2 ring-inset ring-primary/50"
+                          : "hover:bg-accent/50"
+                      }`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          {/* 이름 */}
-                          <h4 className="font-medium text-base mb-1 truncate">
-                            {getPlainText(student.content) || "이름 없음"}
-                          </h4>
+                      {/* 이름 */}
+                      <span className="font-medium flex-1 truncate">
+                        {student.name || getPlainText(student.content) || "이름 없음"}
+                      </span>
 
-                          {/* 태그 */}
-                          {studentTags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mb-2">
-                              {studentTags.map((tag) => (
-                                <span
-                                  key={tag.id}
-                                  className="px-2 py-0.5 text-xs rounded-full"
-                                  style={{
-                                    backgroundColor: `${tag.color}20`,
-                                    color: tag.color,
-                                  }}
-                                >
-                                  {tag.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                      {/* 태그 (첫번째만) */}
+                      {studentTags.length > 0 && (
+                        <span
+                          className="px-2 py-0.5 text-xs rounded-full shrink-0"
+                          style={{
+                            backgroundColor: `${studentTags[0].color}20`,
+                            color: studentTags[0].color,
+                          }}
+                        >
+                          {studentTags[0].name}
+                        </span>
+                      )}
 
-                          {/* 연락처 */}
-                          {contact && (contact.phone || contact.email) && (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                              {contact.phone && (
-                                <div className="flex items-center gap-1">
-                                  <Phone className="w-3 h-3" />
-                                  <span>{contact.phone}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                      {/* 수업 횟수 */}
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {lessonCount}회
+                      </span>
 
-                          {/* 수업 수 */}
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <BookOpen className="w-3 h-3" />
-                            <span>수업 {lessonCount}회</span>
-                            {studentTags.length > 0 && (
-                              <>
-                                <span className="mx-1">|</span>
-                                <span>{studentTags[0].name}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <ChevronRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                     </div>
                   );
                 })}
-              </div>
+              </>
             ) : studentBlocks.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-4xl mb-4">👤</div>

@@ -15,7 +15,7 @@ interface SlashMenuItem {
 interface SlashMenuProps {
   query: string;
   position: { top: number; left: number };
-  onAddProperty: (propertyId: string, type: PropertyType) => void;
+  onAddProperty: (propertyType: PropertyType) => void;
   onApplyType: (typeId: string) => void;
   onClose: () => void;
   blockTypes: BlockType[];
@@ -42,7 +42,7 @@ export function SlashMenu({
         icon: prop.icon,
         name: prop.name,
         description: `${prop.name} 속성 추가`,
-        action: () => onAddProperty(prop.id, prop.type),
+        action: () => onAddProperty(prop.type),
       });
     });
 

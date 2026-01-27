@@ -30,7 +30,11 @@ export function AppLayout() {
     getNextBlockId,
     addProperty,
     updateProperty,
+    updatePropertyByType,
+    updatePropertyName,
     removeProperty,
+    removePropertyByType,
+    updateBlockName,
     applyType,
     moveBlockUp,
     moveBlockDown,
@@ -43,6 +47,14 @@ export function AppLayout() {
     top3History,
     addToTop3,
     removeFromTop3,
+    // 다중 선택 관련
+    selectedBlockIds,
+    isSelectionMode,
+    toggleSelectionMode,
+    toggleBlockSelection,
+    selectAllBlocks,
+    clearSelection,
+    deleteSelectedBlocks,
   } = useBlocks();
 
   const { tags, createTag, getTagsByIds } = useTags();
@@ -106,6 +118,58 @@ export function AppLayout() {
     [blocks, view, getTagsByIds, customViews]
   );
 
+  // 학생 블록 목록 (contact 속성이 있는 블록)
+  const studentBlocks = useMemo(() => {
+    return blocks.filter((b) => b.properties.some((p) => p.propertyType === "contact"));
+  }, [blocks]);
+
+  // 현재 뷰의 블록 목록 (NoteView 이동용)
+  const contextBlocks = useMemo(() => {
+    if (view.type === "students") return studentBlocks;
+    if (view.type === "dashboard") {
+      // 대시보드: TOP 3 + 오늘 할일
+      const todayStr = new Date().toISOString().split("T")[0];
+      const todayBlocks = blocks.filter((b) => {
+        const dateProp = b.properties.find((p) => p.propertyType === "date");
+        return dateProp?.value?.type === "date" && dateProp.value.date === todayStr;
+      });
+      return [...top3Blocks, ...todayBlocks.filter((b) => !top3Blocks.some((t) => t.id === b.id))];
+    }
+    return filteredBlocks;
+  }, [view.type, studentBlocks, blocks, top3Blocks, filteredBlocks]);
+
+  // 블록 이동 핸들러 (NoteView에서 이전/다음 블록으로 이동)
+  const handleNavigateBlock = useCallback(
+    (blockId: string | null) => {
+      if (blockId) {
+        setNoteViewBlockId(blockId);
+      } else {
+        setNoteViewBlockId(null);
+      }
+    },
+    []
+  );
+
+  // 삭제 후 이동 핸들러
+  const handleDeleteWithNav = useCallback(
+    (blockId: string) => {
+      const currentIndex = contextBlocks.findIndex((b) => b.id === blockId);
+
+      // 삭제 실행
+      deleteBlock(blockId);
+
+      // 이전 블록으로 이동, 없으면 다음 블록, 없으면 닫기
+      if (currentIndex > 0) {
+        setNoteViewBlockId(contextBlocks[currentIndex - 1].id);
+      } else if (currentIndex < contextBlocks.length - 1) {
+        setNoteViewBlockId(contextBlocks[currentIndex + 1].id);
+      } else {
+        setNoteViewBlockId(null);
+      }
+    },
+    [contextBlocks, deleteBlock]
+  );
+
   // 블록 카운트 계산
   const blockCounts = useMemo(() => {
     return {
@@ -123,10 +187,10 @@ export function AppLayout() {
     };
 
     return blocks
-      .filter((b) => b.properties.some((p) => p.propertyId === "contact"))
+      .filter((b) => b.properties.some((p) => p.propertyType === "contact"))
       .map((b) => ({
         id: b.id,
-        name: getPlainText(b.content) || "이름 없음",
+        name: b.name || getPlainText(b.content) || "이름 없음",
       }));
   }, [blocks]);
 
@@ -142,7 +206,7 @@ export function AppLayout() {
   const handleAddStudent = useCallback(() => {
     const newBlockId = addBlock();
     // contact 속성 추가
-    addProperty(newBlockId, "contact", { type: "contact", phone: "", email: "" });
+    addProperty(newBlockId, "contact");
     setNoteViewBlockId(newBlockId);
   }, [addBlock, addProperty]);
 
@@ -153,45 +217,24 @@ export function AppLayout() {
       updateBlock(newBlockId, content);
 
       // 날짜 속성 추가
-      addProperty(newBlockId, "date", {
-        type: "date",
-        date,
-        time: time || undefined,
-      });
+      addProperty(newBlockId, "date");
 
       // 학생 선택 시 → 수업
       if (studentId) {
         // person 속성으로 학생 연결
-        addProperty(newBlockId, "person", {
-          type: "person",
-          blockIds: [studentId],
-        });
+        addProperty(newBlockId, "person");
 
         // 기본 수업 시간 (50분)
-        addProperty(newBlockId, "duration", {
-          type: "duration",
-          minutes: 50,
-        });
+        addProperty(newBlockId, "duration");
 
         // 반복 설정 시 → 정규 수업
         if (isRepeat) {
-          const dayOfWeek = new Date(date).getDay();
-          addProperty(newBlockId, "repeat", {
-            type: "repeat",
-            config: {
-              type: "weekly",
-              interval: 1,
-              weekdays: [dayOfWeek],
-            },
-          });
+          addProperty(newBlockId, "repeat");
         }
       }
 
       // 체크박스 추가 (할일로 관리 가능하게)
-      addProperty(newBlockId, "checkbox", {
-        type: "checkbox",
-        checked: false,
-      });
+      addProperty(newBlockId, "checkbox");
     },
     [addBlock, updateBlock, addProperty]
   );
@@ -201,7 +244,7 @@ export function AppLayout() {
     const tagUsage: Record<string, number> = {};
 
     blocks.forEach((block) => {
-      const tagProperty = block.properties.find((p) => p.propertyId === "tag");
+      const tagProperty = block.properties.find((p) => p.propertyType === "tag");
       if (tagProperty?.value.type === "tag") {
         tagProperty.value.tagIds.forEach((tagId: string) => {
           tagUsage[tagId] = (tagUsage[tagId] || 0) + 1;
@@ -265,9 +308,9 @@ export function AppLayout() {
       const types = blockType.propertyIds.map((propId) => {
         const prop = DEFAULT_PROPERTIES.find((p) => p.id === propId);
         return prop?.type || "text";
-      });
+      }) as import("@/types/property").PropertyType[];
 
-      applyType(blockId, blockType.propertyIds, types);
+      applyType(blockId, types);
     },
     [blockTypes, applyType]
   );
@@ -275,9 +318,13 @@ export function AppLayout() {
   // 체크박스 토글 핸들러 (Dashboard용)
   const handleToggleCheckbox = useCallback(
     (blockId: string, checked: boolean) => {
-      updateProperty(blockId, "checkbox", { type: "checkbox", checked });
+      const block = blocks.find((b) => b.id === blockId);
+      const checkboxProp = block?.properties.find((p) => p.propertyType === "checkbox");
+      if (checkboxProp) {
+        updateProperty(blockId, checkboxProp.id, { type: "checkbox", checked });
+      }
     },
-    [updateProperty]
+    [blocks, updateProperty]
   );
 
   return (
@@ -328,7 +375,6 @@ export function AppLayout() {
           onAddBlock={addBlock}
           onUpdateBlock={updateBlock}
           onAddProperty={addProperty}
-          onUpdateProperty={updateProperty}
           onSelectBlock={handleSelectBlock}
         />
       ) : view.type === "calendar" && !view.date ? (
@@ -372,7 +418,11 @@ export function AppLayout() {
           getNextBlockId={getNextBlockId}
           onAddProperty={addProperty}
           onUpdateProperty={updateProperty}
+          onUpdatePropertyByType={updatePropertyByType}
+          onUpdateBlockName={updateBlockName}
+          onUpdatePropertyName={updatePropertyName}
           onRemoveProperty={removeProperty}
+          onRemovePropertyByType={removePropertyByType}
           onCreateTag={createTag}
           onApplyType={handleApplyTypeToBlock}
           onMoveBlockUp={moveBlockUp}
@@ -385,6 +435,14 @@ export function AppLayout() {
           onTogglePin={togglePin}
           onMoveToColumn={moveToColumn}
           frequentTags={frequentTags}
+          // 다중 선택 관련
+          selectedBlockIds={selectedBlockIds}
+          isSelectionMode={isSelectionMode}
+          onToggleSelectionMode={toggleSelectionMode}
+          onToggleBlockSelection={toggleBlockSelection}
+          onSelectAllBlocks={selectAllBlocks}
+          onClearBlockSelection={clearSelection}
+          onDeleteSelectedBlocks={deleteSelectedBlocks}
         />
       )}
 
@@ -402,13 +460,17 @@ export function AppLayout() {
           block={noteViewBlock}
           allTags={tags}
           blockTypes={blockTypes}
+          contextBlocks={contextBlocks}
           onUpdateBlock={updateBlock}
+          onUpdateBlockName={updateBlockName}
           onAddProperty={addProperty}
           onUpdateProperty={updateProperty}
+          onUpdatePropertyName={updatePropertyName}
           onRemoveProperty={removeProperty}
           onCreateTag={createTag}
           onMoveToColumn={moveToColumn}
-          onDeleteBlock={deleteBlock}
+          onDeleteBlock={handleDeleteWithNav}
+          onNavigate={handleNavigateBlock}
           onClose={() => setNoteViewBlockId(null)}
         />
       )}

@@ -44,9 +44,13 @@ interface EditorProps {
   isChildOfCollapsed: (index: number) => boolean;
   getPrevBlockId: (id: string) => string | null;
   getNextBlockId: (id: string) => string | null;
-  onAddProperty: (blockId: string, propertyId: string, type: PropertyType) => void;
+  onAddProperty: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
   onUpdateProperty: (blockId: string, propertyId: string, value: any) => void;
+  onUpdatePropertyByType: (blockId: string, propertyType: PropertyType, value: any) => void;
+  onUpdateBlockName: (blockId: string, name: string) => void;
+  onUpdatePropertyName: (blockId: string, propertyId: string, name: string) => void;
   onRemoveProperty: (blockId: string, propertyId: string) => void;
+  onRemovePropertyByType: (blockId: string, propertyType: PropertyType) => void;
   onCreateTag: (name: string, color: string) => Tag;
   onApplyType: (blockId: string, typeId: string) => void;
   onMoveBlockUp: (id: string) => void;
@@ -59,6 +63,14 @@ interface EditorProps {
   onTogglePin?: (id: string) => void;
   onMoveToColumn?: (id: string, column: BlockColumn) => void;
   frequentTags?: Tag[];
+  // 다중 선택 관련
+  selectedBlockIds?: Set<string>;
+  isSelectionMode?: boolean;
+  onToggleSelectionMode?: () => void;
+  onToggleBlockSelection?: (id: string) => void;
+  onSelectAllBlocks?: (blockIds: string[]) => void;
+  onClearBlockSelection?: () => void;
+  onDeleteSelectedBlocks?: () => void;
 }
 
 export function Editor({
@@ -81,7 +93,11 @@ export function Editor({
   getNextBlockId,
   onAddProperty,
   onUpdateProperty,
+  onUpdatePropertyByType,
+  onUpdateBlockName,
+  onUpdatePropertyName,
   onRemoveProperty,
+  onRemovePropertyByType,
   onCreateTag,
   onApplyType,
   onMoveBlockUp,
@@ -94,6 +110,14 @@ export function Editor({
   onTogglePin,
   onMoveToColumn,
   frequentTags = [],
+  // 다중 선택 관련
+  selectedBlockIds = new Set(),
+  isSelectionMode = false,
+  onToggleSelectionMode,
+  onToggleBlockSelection,
+  onSelectAllBlocks,
+  onClearBlockSelection,
+  onDeleteSelectedBlocks,
 }: EditorProps) {
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [panelBlockId, setPanelBlockId] = useState<string | null>(null);
@@ -234,9 +258,9 @@ export function Editor({
 
   // 패널용 속성 핸들러 (blockId 고정)
   const handlePanelAddProperty = useCallback(
-    (propertyId: string, type: PropertyType) => {
+    (propertyType: PropertyType, name?: string) => {
       if (panelBlockId) {
-        onAddProperty(panelBlockId, propertyId, type);
+        onAddProperty(panelBlockId, propertyType, name);
       }
     },
     [panelBlockId, onAddProperty]
@@ -303,7 +327,7 @@ export function Editor({
     // 완료된 할일 숨기기 (할일 뷰에서만)
     if (viewType === "todo" && hideCompleted) {
       result = result.filter((block) => {
-        const checkbox = block.properties.find((p) => p.propertyId === "checkbox");
+        const checkbox = block.properties.find((p) => p.propertyType === "checkbox");
         return !(checkbox?.value.type === "checkbox" && checkbox.value.checked);
       });
     }
@@ -315,8 +339,8 @@ export function Editor({
           case "oldest":
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           case "date": {
-            const aDate = a.properties.find((p) => p.propertyId === "date");
-            const bDate = b.properties.find((p) => p.propertyId === "date");
+            const aDate = a.properties.find((p) => p.propertyType === "date");
+            const bDate = b.properties.find((p) => p.propertyType === "date");
             const aVal = aDate?.value.type === "date" ? aDate.value.date : "";
             const bVal = bDate?.value.type === "date" ? bDate.value.date : "";
             if (!aVal && !bVal) return 0;
@@ -325,8 +349,8 @@ export function Editor({
             return aVal.localeCompare(bVal);
           }
           case "priority": {
-            const aPri = a.properties.find((p) => p.propertyId === "priority");
-            const bPri = b.properties.find((p) => p.propertyId === "priority");
+            const aPri = a.properties.find((p) => p.propertyType === "priority");
+            const bPri = b.properties.find((p) => p.propertyType === "priority");
             const aLevel: PriorityLevel = aPri?.value.type === "priority" ? aPri.value.level : "none";
             const bLevel: PriorityLevel = bPri?.value.type === "priority" ? bPri.value.level : "none";
             return PRIORITY_WEIGHT[bLevel] - PRIORITY_WEIGHT[aLevel];
@@ -350,7 +374,7 @@ export function Editor({
     if (viewType !== "todo") return null;
 
     const completed = filteredBlocks.filter((block) => {
-      const checkbox = block.properties.find((p) => p.propertyId === "checkbox");
+      const checkbox = block.properties.find((p) => p.propertyType === "checkbox");
       return checkbox?.value.type === "checkbox" && checkbox.value.checked;
     }).length;
 
@@ -391,7 +415,6 @@ export function Editor({
             onMoveToColumn={onMoveToColumn}
             onOpenDetail={handleOpenPropertyPanel}
             onAddProperty={onAddProperty}
-            onUpdateProperty={onUpdateProperty}
             onCreateTag={onCreateTag}
           />
         </div>
@@ -403,8 +426,10 @@ export function Editor({
             allTags={tags}
             blockTypes={blockTypes}
             onUpdateBlock={onUpdateBlock}
+            onUpdateBlockName={onUpdateBlockName}
             onAddProperty={onAddProperty}
             onUpdateProperty={onUpdateProperty}
+            onUpdatePropertyName={onUpdatePropertyName}
             onRemoveProperty={onRemoveProperty}
             onCreateTag={onCreateTag}
             onApplyType={onApplyType}
@@ -425,8 +450,60 @@ export function Editor({
         {/* 상단 바 */}
         <header className="sticky top-0 z-10 bg-background border-b border-border">
           <div className="h-14 flex items-center justify-between px-4">
-            <div className="text-sm font-medium">{viewTitle}</div>
             <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">{viewTitle}</span>
+
+              {/* 선택 모드 토글 버튼 */}
+              <button
+                onClick={onToggleSelectionMode}
+                className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                  isSelectionMode
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-accent text-muted-foreground"
+                }`}
+                title="다중 선택 모드"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 12l2 2 4-4" />
+                </svg>
+                {isSelectionMode ? "선택 중" : "선택"}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* 선택 모드 액션 바 */}
+              {isSelectionMode && (
+                <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded">
+                  <span className="text-xs text-muted-foreground">
+                    {selectedBlockIds.size}개 선택됨
+                  </span>
+                  <button
+                    onClick={() => onSelectAllBlocks?.(visibleBlocks.map((b) => b.id))}
+                    className="text-xs px-2 py-0.5 rounded hover:bg-background transition-colors"
+                  >
+                    전체 선택
+                  </button>
+                  <button
+                    onClick={onClearBlockSelection}
+                    className="text-xs px-2 py-0.5 rounded hover:bg-background transition-colors"
+                  >
+                    선택 해제
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (selectedBlockIds.size > 0 && confirm(`${selectedBlockIds.size}개의 블록을 삭제할까요?`)) {
+                        onDeleteSelectedBlocks?.();
+                      }
+                    }}
+                    disabled={selectedBlockIds.size === 0}
+                    className="text-xs px-2 py-0.5 rounded text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    삭제
+                  </button>
+                </div>
+              )}
+
               {/* 할일 뷰 전용 옵션 */}
               {viewType === "todo" && (
                 <>
@@ -615,6 +692,9 @@ export function Editor({
                 onTogglePin={onTogglePin}
                 frequentTags={frequentTags}
                 isInboxView={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedBlockIds.has(block.id)}
+                onToggleSelection={onToggleBlockSelection}
               />
             ))}
           </div>
@@ -654,8 +734,8 @@ export function Editor({
           allTags={tags}
           blockTypes={blockTypes}
           onAddProperty={onAddProperty}
-          onUpdateProperty={onUpdateProperty}
-          onRemoveProperty={onRemoveProperty}
+          onUpdatePropertyByType={onUpdatePropertyByType}
+          onRemovePropertyByType={onRemovePropertyByType}
           onCreateTag={onCreateTag}
           onApplyType={onApplyType}
           onClose={handleClosePanel}

@@ -13,8 +13,7 @@ interface InboxColumnProps {
   onAddBlock: () => string;
   onUpdateBlock: (id: string, content: string) => void;
   onOpenDetail: (id: string) => void;
-  onAddProperty?: (blockId: string, propertyId: string, type: PropertyType) => void;
-  onUpdateProperty?: (blockId: string, propertyId: string, value: any) => void;
+  onAddProperty?: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
   onCreateTag?: (name: string, color: string) => Tag;
 }
 
@@ -25,7 +24,6 @@ export function InboxColumn({
   onUpdateBlock,
   onOpenDetail,
   onAddProperty,
-  onUpdateProperty,
   onCreateTag,
 }: InboxColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: "inbox" });
@@ -55,17 +53,16 @@ export function InboxColumn({
   // 블록에 속성 적용
   const applyParsedProperties = useCallback(
     (blockId: string, parsed: ReturnType<typeof parseQuickInput>) => {
-      if (!onAddProperty || !onUpdateProperty) return;
+      if (!onAddProperty) return;
 
       // 체크박스 추가
       if (parsed.hasCheckbox) {
-        onAddProperty(blockId, "checkbox", "checkbox");
+        onAddProperty(blockId, "checkbox");
       }
 
       // 날짜 추가
       if (parsed.date) {
-        onAddProperty(blockId, "date", "date");
-        onUpdateProperty(blockId, "date", { type: "date", date: parsed.date });
+        onAddProperty(blockId, "date", undefined, { type: "date", date: parsed.date });
       }
 
       // 태그 추가
@@ -79,12 +76,11 @@ export function InboxColumn({
         });
 
         if (tagIds.length > 0) {
-          onAddProperty(blockId, "tag", "tag");
-          onUpdateProperty(blockId, "tag", { type: "tag", tagIds });
+          onAddProperty(blockId, "tag", undefined, { type: "tag", tagIds });
         }
       }
     },
-    [onAddProperty, onUpdateProperty, getOrCreateTagByName]
+    [onAddProperty, getOrCreateTagByName]
   );
 
   // 빠른 입력 제출

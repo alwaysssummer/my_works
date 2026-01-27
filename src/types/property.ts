@@ -25,6 +25,14 @@ export interface PropertyDefinition {
 
 // 블록에 연결된 속성 값
 export interface BlockProperty {
+  id: string;              // 고유 ID (UUID)
+  propertyType: PropertyType;  // 타입 (checkbox, date 등)
+  name: string;            // 사용자 지정 이름 ("완료 여부", "시작일" 등)
+  value: PropertyValue;
+}
+
+// 기존 호환성을 위한 레거시 타입
+export interface LegacyBlockProperty {
   propertyId: string;
   value: PropertyValue;
 }

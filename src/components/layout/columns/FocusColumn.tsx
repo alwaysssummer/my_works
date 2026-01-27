@@ -13,8 +13,7 @@ interface FocusColumnProps {
   onAddBlock: () => string;
   onUpdateBlock: (id: string, content: string) => void;
   onOpenDetail: (id: string) => void;
-  onAddProperty?: (blockId: string, propertyId: string, type: PropertyType) => void;
-  onUpdateProperty?: (blockId: string, propertyId: string, value: any) => void;
+  onAddProperty?: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
   onCreateTag?: (name: string, color: string) => Tag;
 }
 
@@ -25,7 +24,6 @@ export function FocusColumn({
   onUpdateBlock,
   onOpenDetail,
   onAddProperty,
-  onUpdateProperty,
   onCreateTag,
 }: FocusColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: "focus" });
@@ -39,7 +37,7 @@ export function FocusColumn({
   // 사용자가 직접 추가한 블록 (날짜 없거나 오늘 이전)
   const manualBlocks = useMemo(() => {
     return blocks.filter((block) => {
-      const dateProp = block.properties.find((p) => p.propertyId === "date");
+      const dateProp = block.properties.find((p) => p.propertyType === "date");
       const dateValue = dateProp?.value.type === "date" ? dateProp.value.date : null;
       return !dateValue || dateValue < today;
     });
@@ -48,9 +46,9 @@ export function FocusColumn({
   // 오늘 할일 (날짜가 오늘이고 체크박스가 있는 블록)
   const todayTodos = useMemo(() => {
     return blocks.filter((block) => {
-      const dateProp = block.properties.find((p) => p.propertyId === "date");
+      const dateProp = block.properties.find((p) => p.propertyType === "date");
       const dateValue = dateProp?.value.type === "date" ? dateProp.value.date : null;
-      const hasCheckbox = block.properties.some((p) => p.propertyId === "checkbox");
+      const hasCheckbox = block.properties.some((p) => p.propertyType === "checkbox");
       return dateValue === today && hasCheckbox;
     });
   }, [blocks, today]);
@@ -75,15 +73,14 @@ export function FocusColumn({
   // 블록에 속성 적용
   const applyParsedProperties = useCallback(
     (blockId: string, parsed: ReturnType<typeof parseQuickInput>) => {
-      if (!onAddProperty || !onUpdateProperty) return;
+      if (!onAddProperty) return;
 
       if (parsed.hasCheckbox) {
-        onAddProperty(blockId, "checkbox", "checkbox");
+        onAddProperty(blockId, "checkbox");
       }
 
       if (parsed.date) {
-        onAddProperty(blockId, "date", "date");
-        onUpdateProperty(blockId, "date", { type: "date", date: parsed.date });
+        onAddProperty(blockId, "date", undefined, { type: "date", date: parsed.date });
       }
 
       if (parsed.tags.length > 0) {
@@ -96,12 +93,11 @@ export function FocusColumn({
         });
 
         if (tagIds.length > 0) {
-          onAddProperty(blockId, "tag", "tag");
-          onUpdateProperty(blockId, "tag", { type: "tag", tagIds });
+          onAddProperty(blockId, "tag", undefined, { type: "tag", tagIds });
         }
       }
     },
-    [onAddProperty, onUpdateProperty, getOrCreateTagByName]
+    [onAddProperty, getOrCreateTagByName]
   );
 
   // 빠른 입력 제출
