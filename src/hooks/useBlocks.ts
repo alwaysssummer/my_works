@@ -6,6 +6,7 @@ import { BlockProperty, PropertyType, createPropertyValue, DEFAULT_PROPERTIES, L
 import { mockBlocks } from "@/data/mockData";
 import { useBlockSelection } from "./useBlockSelection";
 import { useBlockSync } from "./useBlockSync";
+import { getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 
 // 기존 propertyId를 기본 이름으로 매핑
 function getDefaultPropertyName(propertyId: string): string {
@@ -100,9 +101,9 @@ export function useBlocks() {
   // 초기화 완료 여부 (무한 루프 방지)
   const isInitializedRef = useRef(false);
 
-  // TOP 3 만료 처리 함수
+  // TOP 3 만료 처리 함수 (한국 시간)
   const processExpiredTop3 = useCallback((loadedBlocks: Block[]) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getKoreanToday();
     const expiredTop3: { id: string; content: string; completed: boolean }[] = [];
 
     const processedBlocks = loadedBlocks.map((block: Block) => {
@@ -126,9 +127,10 @@ export function useBlocks() {
     });
 
     if (expiredTop3.length > 0) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      // 한국 시간 기준 어제 날짜
+      const todayDate = new Date(getKoreanToday());
+      todayDate.setDate(todayDate.getDate() - 1);
+      const yesterdayStr = toKoreanDateString(todayDate);
 
       setTop3History((prev) => {
         const existing = prev.find((h) => h.date === yesterdayStr);
@@ -312,7 +314,7 @@ export function useBlocks() {
           name: "긴급",
           value: {
             type: "urgent" as const,
-            addedAt: new Date().toISOString().split("T")[0],
+            addedAt: getKoreanToday(),
             slotIndex: targetSlot ?? 0,
           },
         });

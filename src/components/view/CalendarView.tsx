@@ -6,7 +6,7 @@ import { groupBlocksByDate } from "@/hooks/useView";
 import { X, Plus, Clock, User, RotateCcw } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
-import { formatDate as formatDateUtil } from "@/lib/dateFormat";
+import { formatDate as formatDateUtil, getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanDateParts } from "@/lib/dateFormat";
 
 // 일정 추가 모달 컴포넌트
 function CalendarAddModal({
@@ -197,8 +197,8 @@ export function CalendarView({
   onAddSchedule,
 }: CalendarViewProps) {
   const [currentMonth, setCurrentMonth] = useState(() => {
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() };
+    const parts = getKoreanDateParts();
+    return { year: parts.year, month: parts.month - 1 }; // month는 0-indexed
   });
 
   // 일정 추가 모달 상태
@@ -233,7 +233,7 @@ export function CalendarView({
     [periodBlocks]
   );
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getKoreanToday();
 
   // 현재 월의 날짜들 생성
   const calendarDays = useMemo(() => {
@@ -250,7 +250,7 @@ export function CalendarView({
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
       const prevDate = new Date(year, month - 1, prevMonthLastDay - i);
       days.push({
-        date: prevDate.toISOString().split("T")[0],
+        date: toKoreanDateString(prevDate),
         day: prevMonthLastDay - i,
         isCurrentMonth: false,
       });
@@ -260,7 +260,7 @@ export function CalendarView({
     for (let i = 1; i <= daysInMonth; i++) {
       const date = new Date(year, month, i);
       days.push({
-        date: date.toISOString().split("T")[0],
+        date: toKoreanDateString(date),
         day: i,
         isCurrentMonth: true,
       });
@@ -271,7 +271,7 @@ export function CalendarView({
     for (let i = 1; i <= remainingDays; i++) {
       const nextDate = new Date(year, month + 1, i);
       days.push({
-        date: nextDate.toISOString().split("T")[0],
+        date: toKoreanDateString(nextDate),
         day: i,
         isCurrentMonth: false,
       });
@@ -299,8 +299,8 @@ export function CalendarView({
   }, []);
 
   const goToToday = useCallback(() => {
-    const now = new Date();
-    setCurrentMonth({ year: now.getFullYear(), month: now.getMonth() });
+    const parts = getKoreanDateParts();
+    setCurrentMonth({ year: parts.year, month: parts.month - 1 });
     onSelectDate(today);
   }, [today, onSelectDate]);
 

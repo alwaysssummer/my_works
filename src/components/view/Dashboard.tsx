@@ -6,7 +6,7 @@ import { X, Plus, ChevronRight, Clock, Flame, Search } from "lucide-react";
 import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
-import { formatDateWithWeekday } from "@/lib/dateFormat";
+import { formatDateWithWeekday, getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 
 // TOP 3 선택 모달 컴포넌트
 function Top3SelectorModal({
@@ -148,14 +148,14 @@ export function Dashboard({
     setDirectInput("");
   };
 
-  // 오늘 날짜
-  const today = new Date().toISOString().split("T")[0];
+  // 오늘 날짜 (한국 시간)
+  const today = getKoreanToday();
 
-  // 어제 날짜
+  // 어제 날짜 (한국 시간)
   const yesterday = useMemo(() => {
-    const date = new Date();
+    const date = new Date(getKoreanToday());
     date.setDate(date.getDate() - 1);
-    return date.toISOString().split("T")[0];
+    return toKoreanDateString(date);
   }, []);
 
   // 어제의 TOP 3 기록
@@ -231,7 +231,7 @@ export function Dashboard({
           <h1 className="font-medium">대시보드</h1>
         </div>
         <time dateTime={today} className="text-sm text-muted-foreground">
-          {formatDateWithWeekday(new Date())}
+          {formatDateWithWeekday(getKoreanNow())}
         </time>
       </header>
 

@@ -6,6 +6,7 @@ import { Block } from "@/types/block";
 import { Tag, PropertyType, TAG_COLORS } from "@/types/property";
 import { DraggableBlock } from "./DraggableBlock";
 import { parseQuickInput } from "@/lib/parseQuickInput";
+import { getKoreanToday } from "@/lib/dateFormat";
 
 interface FocusColumnProps {
   blocks: Block[];
@@ -31,8 +32,8 @@ export function FocusColumn({
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 오늘 날짜
-  const today = new Date().toISOString().split("T")[0];
+  // 오늘 날짜 (한국 시간)
+  const today = getKoreanToday();
 
   // 사용자가 직접 추가한 블록 (날짜 없거나 오늘 이전)
   const manualBlocks = useMemo(() => {

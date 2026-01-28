@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Block, BlockProperty } from "@/types/block";
+import { Block, BlockProperty, getBlockDisplayName } from "@/types/block";
 import { PropertyType } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
+import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay } from "@/lib/dateFormat";
 
 interface WeeklyScheduleProps {
   blocks: Block[];
   settings: ScheduleSettings;
   onAddBlock: (afterId?: string) => string;
   onUpdateBlock: (id: string, content: string) => void;
+  onUpdateBlockName: (id: string, name: string) => void;
   onAddProperty: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: BlockProperty["value"]) => void;
   onSelectBlock: (blockId: string) => void;
 }
@@ -41,12 +43,13 @@ export function WeeklySchedule({
   settings,
   onAddBlock,
   onUpdateBlock,
+  onUpdateBlockName,
   onAddProperty,
   onSelectBlock,
 }: WeeklyScheduleProps) {
-  // 현재 주의 시작일 (월요일 기준)
+  // 현재 주의 시작일 (월요일 기준, 한국 시간)
   const [weekStart, setWeekStart] = useState(() => {
-    const now = new Date();
+    const now = getKoreanNow();
     const day = now.getDay();
     const diff = day === 0 ? -6 : 1 - day; // 월요일로 맞춤
     const monday = new Date(now);
@@ -62,10 +65,10 @@ export function WeeklySchedule({
     time: string;
   } | null>(null);
 
-  // 학생 블록 목록 (person 속성이 있는 블록)
+  // 학생 블록 목록 (contact 속성이 있는 블록을 학생으로 간주)
   const studentBlocks = useMemo(() => {
     return blocks.filter((b) =>
-      b.properties.some((p) => p.propertyType === "person" || p.propertyType === "contact")
+      b.properties.some((p) => p.propertyType === "contact")
     );
   }, [blocks]);
 
@@ -89,83 +92,116 @@ export function WeeklySchedule({
     return days;
   }, [weekStart]);
 
-  // 시간 슬롯 배열
+  // 시간 슬롯 배열 (10분 단위)
   const timeSlots = useMemo(() => {
-    const slots: string[] = [];
+    const slots: { time: string; hour: number; minute: number; isHour: boolean; isHalf: boolean }[] = [];
     for (let hour = settings.startHour; hour < settings.endHour; hour++) {
-      slots.push(`${hour.toString().padStart(2, "0")}:00`);
-      slots.push(`${hour.toString().padStart(2, "0")}:30`);
+      for (let minute = 0; minute < 60; minute += 10) {
+        slots.push({
+          time: `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`,
+          hour,
+          minute,
+          isHour: minute === 0,
+          isHalf: minute === 30,
+        });
+      }
     }
     return slots;
   }, [settings.startHour, settings.endHour]);
 
-  // 블록에서 수업 이벤트 추출
-  const scheduleEvents = useMemo(() => {
-    const events: ScheduleEvent[] = [];
-
-    blocks.forEach((block) => {
-      const dateProp = block.properties.find((p) => p.propertyType === "date");
-      if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.time) return;
-
-      // 수업 시간 결정: 블록 duration > 학생 duration > 설정 기본값
-      let duration = settings.defaultDuration;
-
-      const blockDuration = block.properties.find((p) => p.propertyType === "duration");
-      if (blockDuration?.value.type === "duration") {
-        duration = blockDuration.value.minutes;
-      } else {
-        // 연결된 학생의 duration 확인
-        const personProp = block.properties.find((p) => p.propertyType === "person");
-        const personValue = personProp?.value;
-        if (personValue?.type === "person" && personValue.blockIds.length > 0) {
-          const studentBlock = blocks.find((b) => b.id === personValue.blockIds[0]);
-          const studentDuration = studentBlock?.properties.find((p) => p.propertyType === "duration");
-          if (studentDuration?.value.type === "duration") {
-            duration = studentDuration.value.minutes;
-          }
-        }
-      }
-
-      // 학생 이름 찾기
-      let studentName: string | undefined;
-      const personProp2 = block.properties.find((p) => p.propertyType === "person");
-      const personValue2 = personProp2?.value;
-      if (personValue2?.type === "person" && personValue2.blockIds.length > 0) {
-        const studentBlock = blocks.find((b) => b.id === personValue2.blockIds[0]);
-        if (studentBlock) {
-          studentName = studentBlock.content.replace(/<[^>]*>/g, "").trim() || undefined;
-        }
-      }
-
-      events.push({
-        block,
-        date: dateProp.value.date,
-        startTime: dateProp.value.time,
-        duration,
-        studentName,
-      });
-    });
-
-    return events;
-  }, [blocks, settings.defaultDuration]);
-
-  // 특정 날짜의 이벤트 가져오기
+  // 특정 날짜의 이벤트 가져오기 (반복 일정 포함)
   const getEventsForDate = useCallback(
     (date: Date) => {
-      const dateStr = date.toISOString().split("T")[0];
-      return scheduleEvents.filter((e) => e.date === dateStr);
+      const dateStr = toKoreanDateString(date);
+      const dayOfWeek = date.getDay(); // 0=일, 1=월, ..., 6=토
+      const result: ScheduleEvent[] = [];
+
+      blocks.forEach((block) => {
+        const dateProp = block.properties.find((p) => p.propertyType === "date");
+        if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.time) return;
+
+        const originalDate = dateProp.value.date;
+        const repeatProp = block.properties.find((p) => p.propertyType === "repeat");
+        const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
+
+        let shouldShow = false;
+
+        // 원본 날짜와 일치하면 표시
+        if (originalDate === dateStr) {
+          shouldShow = true;
+        }
+        // 반복 설정이 있고, 원본 날짜 이후인 경우
+        else if (repeatConfig && dateStr > originalDate) {
+          // 종료 날짜 확인
+          if (repeatConfig.endDate && dateStr > repeatConfig.endDate) {
+            shouldShow = false;
+          } else if (repeatConfig.type === "weekly" && repeatConfig.weekdays?.includes(dayOfWeek)) {
+            // 매주 반복 - 해당 요일에 표시
+            shouldShow = true;
+          } else if (repeatConfig.type === "daily") {
+            // 매일 반복
+            shouldShow = true;
+          } else if (repeatConfig.type === "monthly") {
+            // 매월 반복 - 같은 일자에 표시
+            const originalDay = new Date(originalDate).getDate();
+            if (date.getDate() === originalDay) {
+              shouldShow = true;
+            }
+          }
+        }
+
+        if (shouldShow) {
+          // 수업 시간 결정
+          let duration = settings.defaultDuration;
+          const blockDuration = block.properties.find((p) => p.propertyType === "duration");
+          if (blockDuration?.value.type === "duration") {
+            duration = blockDuration.value.minutes;
+          } else {
+            const personProp = block.properties.find((p) => p.propertyType === "person");
+            const personValue = personProp?.value;
+            if (personValue?.type === "person" && personValue.blockIds.length > 0) {
+              const studentBlock = blocks.find((b) => b.id === personValue.blockIds[0]);
+              const studentDuration = studentBlock?.properties.find((p) => p.propertyType === "duration");
+              if (studentDuration?.value.type === "duration") {
+                duration = studentDuration.value.minutes;
+              }
+            }
+          }
+
+          // 학생 이름 찾기
+          let studentName: string | undefined;
+          const personProp = block.properties.find((p) => p.propertyType === "person");
+          const personValue = personProp?.value;
+          if (personValue?.type === "person" && personValue.blockIds.length > 0) {
+            const studentBlock = blocks.find((b) => b.id === personValue.blockIds[0]);
+            if (studentBlock) {
+              studentName = getBlockDisplayName(studentBlock);
+            }
+          }
+
+          result.push({
+            block,
+            date: dateStr,
+            startTime: dateProp.value.time,
+            duration,
+            studentName,
+          });
+        }
+      });
+
+      return result;
     },
-    [scheduleEvents]
+    [blocks, settings.defaultDuration]
   );
 
-  // 이벤트 위치 및 크기 계산
+  // 이벤트 위치 및 크기 계산 (10분당 약 13.33px, 30분당 40px 유지)
   const getEventStyle = useCallback(
     (event: ScheduleEvent, overlapIndex: number, overlapCount: number) => {
       const [hours, minutes] = event.startTime.split(":").map(Number);
       const startMinutes = (hours - settings.startHour) * 60 + minutes;
-      const slotHeight = 40; // 30분당 40px
-      const top = (startMinutes / 30) * slotHeight;
-      const height = (event.duration / 30) * slotHeight;
+      const slotHeight = 40 / 3; // 10분당 약 13.33px (30분당 40px 유지)
+      const top = (startMinutes / 10) * slotHeight;
+      const height = (event.duration / 10) * slotHeight;
       const width = 100 / overlapCount;
       const left = width * overlapIndex;
 
@@ -212,9 +248,9 @@ export function WeeklySchedule({
     });
   }, []);
 
-  // 오늘로 이동
+  // 오늘로 이동 (한국 시간)
   const goToToday = useCallback(() => {
-    const now = new Date();
+    const now = getKoreanNow();
     const day = now.getDay();
     const diff = day === 0 ? -6 : 1 - day;
     const monday = new Date(now);
@@ -225,18 +261,18 @@ export function WeeklySchedule({
 
   // 빈 영역 클릭 시 수업 추가
   const handleCellClick = useCallback((date: Date, time: string) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = toKoreanDateString(date);
     setAddModalData({ date: dateStr, time });
     setShowAddModal(true);
   }, []);
 
-  // 오늘 날짜
-  const today = new Date().toISOString().split("T")[0];
+  // 오늘 날짜 (한국 시간)
+  const today = getKoreanToday();
 
-  // 현재 시간 표시 (분 단위)
-  const now = new Date();
-  const currentMinutes = (now.getHours() - settings.startHour) * 60 + now.getMinutes();
-  const isCurrentWeek = weekDays.some((d) => d.toISOString().split("T")[0] === today);
+  // 현재 시간 표시 (한국 시간 기준)
+  const koreanTime = getKoreanTime();
+  const currentMinutes = (koreanTime.hours - settings.startHour) * 60 + koreanTime.minutes;
+  const isCurrentWeek = weekDays.some((d) => toKoreanDateString(d) === today);
 
   // 주간 범위 텍스트
   const weekRangeText = useMemo(() => {
@@ -293,7 +329,7 @@ export function WeeklySchedule({
           <div className="flex border-b border-border sticky top-0 bg-background z-10">
             <div className="w-16 flex-shrink-0 border-r border-border" />
             {weekDays.map((date, index) => {
-              const dateStr = date.toISOString().split("T")[0];
+              const dateStr = toKoreanDateString(date);
               const isToday = dateStr === today;
               const isSunday = index === 6;
               const isSaturday = index === 5;
@@ -338,20 +374,29 @@ export function WeeklySchedule({
           <div className="flex">
             {/* 시간 라벨 */}
             <div className="w-16 flex-shrink-0 border-r border-border">
-              {timeSlots.map((time, index) => (
+              {timeSlots.map((slot, index) => (
                 <div
-                  key={time}
-                  className="h-10 flex items-start justify-end pr-2 text-xs text-muted-foreground"
-                  style={{ marginTop: index === 0 ? 0 : undefined }}
+                  key={slot.time}
+                  className={`flex items-start justify-end pr-2 text-xs ${
+                    slot.isHour
+                      ? "font-bold text-foreground"
+                      : slot.isHalf
+                      ? "text-muted-foreground/70"
+                      : ""
+                  }`}
+                  style={{
+                    height: `${40 / 3}px`,
+                    marginTop: index === 0 ? 0 : undefined
+                  }}
                 >
-                  {time.endsWith(":00") && time}
+                  {slot.isHour ? slot.time : slot.isHalf ? slot.time : ""}
                 </div>
               ))}
             </div>
 
             {/* 요일별 컬럼 */}
             {weekDays.map((date, dayIndex) => {
-              const dateStr = date.toISOString().split("T")[0];
+              const dateStr = toKoreanDateString(date);
               const isToday = dateStr === today;
               const events = getEventsForDate(date);
 
@@ -362,14 +407,19 @@ export function WeeklySchedule({
                     isToday ? "bg-primary/5" : ""
                   }`}
                 >
-                  {/* 시간 슬롯 그리드 */}
-                  {timeSlots.map((time) => (
+                  {/* 시간 슬롯 그리드 (10분 단위) */}
+                  {timeSlots.map((slot) => (
                     <div
-                      key={time}
-                      className={`h-10 border-b border-border/50 cursor-pointer hover:bg-accent/30 transition-colors ${
-                        time.endsWith(":00") ? "border-b-border" : ""
-                      }`}
-                      onClick={() => handleCellClick(date, time)}
+                      key={slot.time}
+                      className={`cursor-pointer transition-colors ${
+                        slot.isHour
+                          ? "border-t-2 border-border"
+                          : slot.isHalf
+                          ? "border-t border-border/50"
+                          : "border-t border-dashed border-border/30"
+                      } hover:bg-accent/40`}
+                      style={{ height: `${40 / 3}px` }}
+                      onClick={() => handleCellClick(date, slot.time)}
                     />
                   ))}
 
@@ -378,7 +428,7 @@ export function WeeklySchedule({
                     <div
                       className="absolute left-0 right-0 border-t-2 border-red-500 z-20 pointer-events-none"
                       style={{
-                        top: `${(currentMinutes / 30) * 40}px`,
+                        top: `${(currentMinutes / 10) * (40 / 3)}px`,
                       }}
                     >
                       <div className="w-2 h-2 rounded-full bg-red-500 -mt-1 -ml-1" />
@@ -469,16 +519,16 @@ export function WeeklySchedule({
             setShowAddModal(false);
             setAddModalData(null);
           }}
-          onAdd={(studentId, time, duration) => {
+          onAdd={(studentId, time, duration, isRegular) => {
             // 새 블록 생성
             const newBlockId = onAddBlock();
 
             // 학생 이름 찾기
             const studentBlock = studentBlocks.find((b) => b.id === studentId);
-            const studentName = studentBlock?.content.replace(/<[^>]*>/g, "").trim() || "수업";
+            const studentName = studentBlock ? getBlockDisplayName(studentBlock) : "수업";
 
-            // 블록 내용 업데이트
-            onUpdateBlock(newBlockId, studentName);
+            // 블록 제목(name)에 학생 이름 설정
+            onUpdateBlockName(newBlockId, studentName);
 
             // 날짜/시간 속성 추가
             onAddProperty(newBlockId, "date", undefined, {
@@ -505,6 +555,19 @@ export function WeeklySchedule({
                   minutes: duration,
                 });
               }
+            }
+
+            // 정규 수업인 경우 repeat 속성 추가
+            if (isRegular) {
+              const lessonDate = new Date(addModalData.date);
+              onAddProperty(newBlockId, "repeat", undefined, {
+                type: "repeat",
+                config: {
+                  type: "weekly",
+                  interval: 1,
+                  weekdays: [lessonDate.getDay()], // 해당 요일 (0=일, 1=월, ..., 6=토)
+                },
+              });
             }
 
             setShowAddModal(false);
@@ -538,11 +601,12 @@ function AddLessonModal({
   settings: ScheduleSettings;
   blocks: Block[];
   onClose: () => void;
-  onAdd: (studentId: string, time: string, duration: number) => void;
+  onAdd: (studentId: string, time: string, duration: number, isRegular: boolean) => void;
 }) {
   const [selectedStudent, setSelectedStudent] = useState("");
   const [startTime, setStartTime] = useState(time);
   const [duration, setDuration] = useState(settings.defaultDuration);
+  const [isRegular, setIsRegular] = useState(true); // 기본값: 정규 수업
 
   // 학생 선택 시 해당 학생의 기본 수업 시간으로 설정
   const handleStudentChange = (studentId: string) => {
@@ -596,7 +660,7 @@ function AddLessonModal({
               <option value="">선택하세요</option>
               {studentBlocks.map((student) => (
                 <option key={student.id} value={student.id}>
-                  {student.content.replace(/<[^>]*>/g, "").trim() || "이름 없음"}
+                  {getBlockDisplayName(student)}
                 </option>
               ))}
             </select>
@@ -632,6 +696,20 @@ function AddLessonModal({
               ))}
             </select>
           </div>
+
+          {/* 매주 반복 (정규 수업) */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isRegular"
+              checked={isRegular}
+              onChange={(e) => setIsRegular(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20"
+            />
+            <label htmlFor="isRegular" className="text-sm text-gray-700">
+              매주 반복 (정규 수업)
+            </label>
+          </div>
         </div>
 
         {/* 버튼 */}
@@ -643,7 +721,7 @@ function AddLessonModal({
             취소
           </button>
           <button
-            onClick={() => onAdd(selectedStudent, startTime, duration)}
+            onClick={() => onAdd(selectedStudent, startTime, duration, isRegular)}
             disabled={!selectedStudent}
             className="flex-1 px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >

@@ -5,7 +5,8 @@ import { Block, BlockColumn } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { ViewType } from "@/types/view";
-import { BlockItem, PropertyModal, BlockDetailModal } from "@/components/block";
+import { BlockItem, PropertyModal } from "@/components/block";
+import { NoteView } from "@/components/view/NoteView";
 import { ThreeColumnLayout } from "./columns";
 
 // 정렬 타입
@@ -419,12 +420,13 @@ export function Editor({
           />
         </div>
 
-        {/* 블록 상세 모달 */}
+        {/* 블록 상세 뷰 (노션 스타일) */}
         {panelBlock && (
-          <BlockDetailModal
+          <NoteView
             block={panelBlock}
             allTags={tags}
             blockTypes={blockTypes}
+            contextBlocks={filteredBlocks}
             onUpdateBlock={onUpdateBlock}
             onUpdateBlockName={onUpdateBlockName}
             onAddProperty={onAddProperty}
@@ -432,9 +434,9 @@ export function Editor({
             onUpdatePropertyName={onUpdatePropertyName}
             onRemoveProperty={onRemoveProperty}
             onCreateTag={onCreateTag}
-            onApplyType={onApplyType}
             onMoveToColumn={onMoveToColumn}
             onDeleteBlock={onDeleteBlock}
+            onNavigate={(blockId) => blockId && setPanelBlockId(blockId)}
             onClose={handleClosePanel}
           />
         )}

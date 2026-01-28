@@ -1,10 +1,79 @@
 /**
- * 국제화된 날짜 포맷팅 유틸리티
- * Intl.DateTimeFormat을 사용하여 로케일에 맞는 날짜 형식 제공
+ * 한국 시간(KST) 기준 날짜 유틸리티
+ * 모든 날짜/시간은 한국 시간대(UTC+9) 기준
  */
 
 // 기본 로케일 (한국어)
 const DEFAULT_LOCALE = "ko-KR";
+
+// 한국 시간대
+const KOREA_TIMEZONE = "Asia/Seoul";
+
+/**
+ * 현재 한국 시간 Date 객체 반환
+ */
+export function getKoreanNow(): Date {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: KOREA_TIMEZONE }));
+}
+
+/**
+ * 오늘 한국 날짜 (YYYY-MM-DD)
+ */
+export function getKoreanToday(): string {
+  return toKoreanDateString(new Date());
+}
+
+/**
+ * Date를 한국 시간 기준 YYYY-MM-DD 문자열로 변환
+ */
+export function toKoreanDateString(date: Date): string {
+  const korean = new Date(date.toLocaleString("en-US", { timeZone: KOREA_TIMEZONE }));
+  const year = korean.getFullYear();
+  const month = String(korean.getMonth() + 1).padStart(2, "0");
+  const day = String(korean.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * 한국 시간 기준 시:분 반환
+ */
+export function getKoreanTime(date: Date = new Date()): { hours: number; minutes: number } {
+  const korean = new Date(date.toLocaleString("en-US", { timeZone: KOREA_TIMEZONE }));
+  return {
+    hours: korean.getHours(),
+    minutes: korean.getMinutes(),
+  };
+}
+
+/**
+ * 한국 시간 기준 요일 반환 (0=일, 1=월, ..., 6=토)
+ */
+export function getKoreanDay(date: Date = new Date()): number {
+  const korean = new Date(date.toLocaleString("en-US", { timeZone: KOREA_TIMEZONE }));
+  return korean.getDay();
+}
+
+/**
+ * 한국 시간 기준 날짜 부분 반환
+ */
+export function getKoreanDateParts(date: Date = new Date()): {
+  year: number;
+  month: number;
+  day: number;
+  hours: number;
+  minutes: number;
+  dayOfWeek: number;
+} {
+  const korean = new Date(date.toLocaleString("en-US", { timeZone: KOREA_TIMEZONE }));
+  return {
+    year: korean.getFullYear(),
+    month: korean.getMonth() + 1,
+    day: korean.getDate(),
+    hours: korean.getHours(),
+    minutes: korean.getMinutes(),
+    dayOfWeek: korean.getDay(),
+  };
+}
 
 /**
  * 날짜를 로케일에 맞게 포맷팅

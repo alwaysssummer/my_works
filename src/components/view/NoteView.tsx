@@ -12,7 +12,7 @@ import { Block, BlockColumn, BlockProperty } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { saveImage, getImage } from "@/lib/imageStorage";
-import { formatRelativeDate } from "@/lib/dateFormat";
+import { formatRelativeDate, getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 
 interface NoteViewProps {
   block: Block;
@@ -69,8 +69,15 @@ export function NoteView({
   onClose,
 }: NoteViewProps) {
   const [blockName, setBlockName] = useState(block.name || "");
-  const [showPropertyBar, setShowPropertyBar] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // 속성 관련 상태
+  const [isPropertyExpanded, setIsPropertyExpanded] = useState(true);
+  const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
+  const [showAddProperty, setShowAddProperty] = useState(false);
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
 
   // 학생 블록 여부 판단 (contact 속성 존재)
   const isStudentBlock = useMemo(() =>
@@ -113,17 +120,11 @@ export function NoteView({
     }
     onDeleteBlock(block.id);
   }, [block.id, block.content, block.name, onDeleteBlock]);
-  const [showTagInput, setShowTagInput] = useState(false);
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showPriorityPicker, setShowPriorityPicker] = useState(false);
-  const [showAddProperty, setShowAddProperty] = useState(false);
 
-  // 오늘/내일/다음주 날짜
-  const today = new Date().toISOString().split("T")[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-  const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+  // 오늘/내일/다음주 날짜 (한국 시간)
+  const today = toKoreanDateString(getKoreanNow());
+  const tomorrow = (() => { const d = getKoreanNow(); d.setDate(d.getDate() + 1); return toKoreanDateString(d); })();
+  const nextWeek = (() => { const d = getKoreanNow(); d.setDate(d.getDate() + 7); return toKoreanDateString(d); })();
 
   // 속성 타입으로 속성 찾기
   const getPropertyByType = useCallback(
@@ -158,6 +159,37 @@ export function NoteView({
   const tagIds: string[] = tagProp?.value?.type === "tag" ? tagProp.value.tagIds : [];
   const blockTags = tagIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean);
 
+  // 메모
+  const memoProp = getPropertyByType("memo");
+  const memoText = memoProp?.value?.type === "memo" ? memoProp.value.text : "";
+
+  // 연락처
+  const contactProp = getPropertyByType("contact");
+  const contactPhone = contactProp?.value?.type === "contact" ? contactProp.value.phone || "" : "";
+  const contactEmail = contactProp?.value?.type === "contact" ? contactProp.value.email || "" : "";
+
+  // 반복
+  const repeatProp = getPropertyByType("repeat");
+  const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
+  const repeatType = repeatConfig?.type || "none";
+  const repeatWeekdays = repeatConfig?.weekdays || [];
+
+  // 사람 연결
+  const personProp = getPropertyByType("person");
+  const personBlockIds = personProp?.value?.type === "person" ? personProp.value.blockIds || [] : [];
+  const linkedPersons = personBlockIds.map(id => contextBlocks.find(b => b.id === id)).filter(Boolean);
+
+  // 긴급
+  const urgentProp = getPropertyByType("urgent");
+  const urgentSlot = urgentProp?.value?.type === "urgent" ? urgentProp.value.slotIndex : undefined;
+
+  // 수업 시간
+  const durationProp = getPropertyByType("duration");
+  const durationMinutes = durationProp?.value?.type === "duration" ? durationProp.value.minutes : 0;
+
+  // 속성 개수
+  const propertyCount = block.properties.length;
+
   // Tiptap 에디터 설정 (Typora 스타일)
   const editor = useEditor({
     immediatelyRender: false,
@@ -184,7 +216,7 @@ export function NoteView({
     content: block.content,
     editorProps: {
       attributes: {
-        class: "note-editor-content outline-none min-h-[60vh] focus:outline-none",
+        class: "note-editor-content outline-none min-h-[200px] focus:outline-none",
       },
       handlePaste: (view, event) => {
         const items = event.clipboardData?.items;
@@ -284,7 +316,6 @@ export function NoteView({
   // 학생 블록이고 이름이 비어있으면 자동 포커스
   useEffect(() => {
     if (isStudentBlock && !block.name) {
-      // 약간의 딜레이 후 포커스 (렌더링 완료 대기)
       const timer = setTimeout(() => {
         nameInputRef.current?.focus();
       }, 100);
@@ -305,7 +336,6 @@ export function NoteView({
       if (dateProp) {
         onUpdateProperty(block.id, dateProp.id, { type: "date", date });
       }
-      setShowDatePicker(false);
     },
     [block.id, dateProp, onUpdateProperty]
   );
@@ -316,7 +346,6 @@ export function NoteView({
       if (priorityProp) {
         onUpdateProperty(block.id, priorityProp.id, { type: "priority", level });
       }
-      setShowPriorityPicker(false);
     },
     [block.id, priorityProp, onUpdateProperty]
   );
@@ -345,6 +374,85 @@ export function NoteView({
     }
   }, [newTagName, newTagColor, tagIds, tagProp, block.id, onCreateTag, onUpdateProperty]);
 
+  // 메모 변경
+  const handleMemoChange = useCallback(
+    (text: string) => {
+      if (memoProp) {
+        onUpdateProperty(block.id, memoProp.id, { type: "memo", text });
+      }
+    },
+    [block.id, memoProp, onUpdateProperty]
+  );
+
+  // 연락처 변경
+  const handleContactChange = useCallback(
+    (field: "phone" | "email", value: string) => {
+      if (contactProp) {
+        onUpdateProperty(block.id, contactProp.id, {
+          type: "contact",
+          phone: field === "phone" ? value : contactPhone,
+          email: field === "email" ? value : contactEmail,
+        });
+      }
+    },
+    [block.id, contactProp, contactPhone, contactEmail, onUpdateProperty]
+  );
+
+  // 반복 변경
+  const handleRepeatChange = useCallback(
+    (type: "none" | "daily" | "weekly" | "monthly", weekdays?: number[]) => {
+      if (repeatProp) {
+        onUpdateProperty(block.id, repeatProp.id, {
+          type: "repeat",
+          config: type === "none" ? null : {
+            type,
+            interval: 1,
+            weekdays: weekdays || repeatWeekdays,
+          },
+        });
+      }
+    },
+    [block.id, repeatProp, repeatWeekdays, onUpdateProperty]
+  );
+
+  // 사람 연결 토글
+  const handleTogglePerson = useCallback(
+    (personId: string) => {
+      if (personProp) {
+        const newBlockIds = personBlockIds.includes(personId)
+          ? personBlockIds.filter(id => id !== personId)
+          : [...personBlockIds, personId];
+        onUpdateProperty(block.id, personProp.id, { type: "person", blockIds: newBlockIds });
+      }
+    },
+    [block.id, personProp, personBlockIds, onUpdateProperty]
+  );
+
+  // 긴급 슬롯 변경 (undefined면 속성 제거)
+  const handleUrgentChange = useCallback(
+    (slotIndex: number | undefined) => {
+      if (urgentProp) {
+        if (slotIndex === undefined) {
+          onRemoveProperty(block.id, urgentProp.id);
+        } else {
+          const currentAddedAt = urgentProp.value?.type === "urgent" ? urgentProp.value.addedAt : getKoreanToday();
+          onUpdateProperty(block.id, urgentProp.id, { type: "urgent", addedAt: currentAddedAt, slotIndex });
+        }
+      }
+    },
+    [block.id, urgentProp, onUpdateProperty, onRemoveProperty]
+  );
+
+  // 수업 시간 변경
+  const handleDurationChange = useCallback(
+    (minutes: number) => {
+      if (durationProp) {
+        onUpdateProperty(block.id, durationProp.id, { type: "duration", minutes });
+      }
+    },
+    [block.id, durationProp, onUpdateProperty]
+  );
+
   // 속성 추가 (노션 방식: 기본 이름으로 즉시 추가)
   const handleAddProperty = useCallback(
     (propertyType: PropertyType) => {
@@ -357,34 +465,45 @@ export function NoteView({
     [block.id, onAddProperty]
   );
 
+  // 속성 이름 변경
+  const handlePropertyNameChange = useCallback(
+    (propertyId: string, name: string) => {
+      onUpdatePropertyName(block.id, propertyId, name);
+      setEditingPropertyId(null);
+    },
+    [block.id, onUpdatePropertyName]
+  );
+
+  // 속성 제거
+  const handleRemoveProperty = useCallback(
+    (propertyId: string) => {
+      onRemoveProperty(block.id, propertyId);
+    },
+    [block.id, onRemoveProperty]
+  );
+
   // 날짜 표시 텍스트
   const getDateDisplayText = () => {
-    if (!dateStr) return "날짜";
+    if (!dateStr) return "";
     if (dateStr === today) return "오늘";
     if (dateStr === tomorrow) return "내일";
-    const date = new Date(dateStr);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
+    return dateStr;
   };
 
-  // 모든 속성 유형 (같은 타입 여러 개 추가 가능)
+  // 모든 속성 유형
   const allPropertyTypes = DEFAULT_PROPERTIES;
 
   return (
     <div className="fixed top-0 right-0 bottom-0 left-60 z-50 bg-background flex flex-col">
-      {/* 클릭 외부 닫기 핸들러 - DOM 순서상 가장 먼저 렌더링하여 드롭다운 아래에 위치 */}
-      {(showDatePicker || showPropertyBar || showPriorityPicker || showAddProperty) && (
+      {/* 클릭 외부 닫기 핸들러 */}
+      {showAddProperty && (
         <div
-          className="fixed inset-0 z-[1]"
-          onClick={() => {
-            setShowDatePicker(false);
-            setShowPropertyBar(false);
-            setShowPriorityPicker(false);
-            setShowAddProperty(false);
-          }}
+          className="fixed inset-0 z-[99]"
+          onClick={() => setShowAddProperty(false)}
         />
       )}
 
-      {/* 상단 바 */}
+      {/* 상단 바 - 간소화 */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative z-10">
         {/* 왼쪽: 돌아가기 + 이전/다음 버튼 */}
         <div className="flex items-center gap-2">
@@ -423,257 +542,20 @@ export function NoteView({
           )}
         </div>
 
-        {/* 오른쪽: 속성 미니멀 표시 */}
-        <div className="flex items-center gap-3">
-          {/* 체크박스 */}
-          {hasPropertyType("checkbox") && (
-            <button
-              onClick={handleToggleCheckbox}
-              aria-label={isChecked ? "할일 완료 해제" : "할일 완료 처리"}
-              aria-pressed={isChecked}
-              className={`w-5 h-5 rounded border flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
-                isChecked
-                  ? "bg-primary border-primary text-primary-foreground"
-                  : "border-muted-foreground/50 hover:border-primary"
-              }`}
-            >
-              {isChecked && <span className="text-xs" aria-hidden="true">✓</span>}
-            </button>
-          )}
-
-          {/* 날짜 */}
-          {hasPropertyType("date") && (
-            <div className="relative">
-              <button
-                onClick={() => setShowDatePicker(!showDatePicker)}
-                aria-label={`날짜: ${getDateDisplayText()}`}
-                aria-expanded={showDatePicker}
-                aria-haspopup="dialog"
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span aria-hidden="true">◇</span>
-                <span>{getDateDisplayText()}</span>
-              </button>
-              {showDatePicker && (
-                <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg p-3 z-[100] min-w-[200px]">
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      onClick={() => handleDateChange(today)}
-                      className={`text-xs px-2 py-1 rounded ${
-                        dateStr === today
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-accent hover:bg-accent/80"
-                      }`}
-                    >
-                      오늘
-                    </button>
-                    <button
-                      onClick={() => handleDateChange(tomorrow)}
-                      className={`text-xs px-2 py-1 rounded ${
-                        dateStr === tomorrow
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-accent hover:bg-accent/80"
-                      }`}
-                    >
-                      내일
-                    </button>
-                    <button
-                      onClick={() => handleDateChange(nextWeek)}
-                      className={`text-xs px-2 py-1 rounded ${
-                        dateStr === nextWeek
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-accent hover:bg-accent/80"
-                      }`}
-                    >
-                      다음주
-                    </button>
-                  </div>
-                  <input
-                    type="date"
-                    value={dateStr}
-                    onChange={(e) => handleDateChange(e.target.value)}
-                    className="w-full bg-accent/30 border border-border rounded px-2 py-1 text-sm"
-                  />
-                  {dateStr && (
-                    <button
-                      onClick={() => handleDateChange("")}
-                      className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      날짜 삭제
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 태그 */}
-          {hasPropertyType("tag") && (
-            <div className="relative">
-              <button
-                onClick={() => setShowPropertyBar(!showPropertyBar)}
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
-              >
-                <span>#</span>
-                {blockTags.length > 0 ? (
-                  <div className="flex items-center gap-1">
-                    {blockTags.slice(0, 2).map((tag) => (
-                      <span
-                        key={tag?.id}
-                        className="px-1.5 py-0.5 rounded text-xs text-white"
-                        style={{ backgroundColor: tag?.color }}
-                      >
-                        {tag?.name}
-                      </span>
-                    ))}
-                    {blockTags.length > 2 && (
-                      <span className="text-xs">+{blockTags.length - 2}</span>
-                    )}
-                  </div>
-                ) : (
-                  <span>태그</span>
-                )}
-              </button>
-              {showPropertyBar && (
-                <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg p-3 z-[100] min-w-[250px]">
-                  <div className="text-xs text-muted-foreground mb-2">태그 선택</div>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {allTags.map((tag) => (
-                      <button
-                        key={tag.id}
-                        onClick={() => handleToggleTag(tag.id)}
-                        className={`text-xs px-2 py-1 rounded transition-all ${
-                          tagIds.includes(tag.id)
-                            ? "ring-2 ring-offset-1"
-                            : "opacity-60 hover:opacity-100"
-                        }`}
-                        style={{
-                          backgroundColor: `${tag.color}20`,
-                          color: tag.color,
-                        }}
-                      >
-                        {tag.name}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setShowTagInput(!showTagInput)}
-                      className="text-xs px-2 py-1 rounded bg-accent hover:bg-accent/80 text-muted-foreground"
-                    >
-                      + 새 태그
-                    </button>
-                  </div>
-                  {showTagInput && (
-                    <div className="flex gap-2 items-center mt-2 pt-2 border-t border-border">
-                      <input
-                        type="text"
-                        value={newTagName}
-                        onChange={(e) => setNewTagName(e.target.value)}
-                        placeholder="태그 이름"
-                        className="flex-1 bg-accent/30 border border-border rounded px-2 py-1 text-xs"
-                        onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
-                      />
-                      <div className="flex gap-1">
-                        {TAG_COLORS.slice(0, 5).map((color) => (
-                          <button
-                            key={color}
-                            onClick={() => setNewTagColor(color)}
-                            className={`w-4 h-4 rounded-full ${
-                              newTagColor === color ? "ring-2 ring-offset-1" : ""
-                            }`}
-                            style={{ backgroundColor: color }}
-                          />
-                        ))}
-                      </div>
-                      <button
-                        onClick={handleCreateTag}
-                        disabled={!newTagName.trim()}
-                        className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
-                      >
-                        추가
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 우선순위 */}
-          {hasPropertyType("priority") && priority !== "none" && (
-            <div className="relative">
-              <button
-                onClick={() => setShowPriorityPicker(!showPriorityPicker)}
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
-              >
-                <span>!</span>
-                <span>{PRIORITY_LABELS[priority]}</span>
-              </button>
-              {showPriorityPicker && (
-                <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg p-2 z-[100]">
-                  {PRIORITY_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handlePriorityChange(opt.value)}
-                      className={`w-full flex items-center gap-2 text-xs px-3 py-1.5 rounded hover:bg-accent ${
-                        priority === opt.value ? "bg-accent" : ""
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${opt.color}`} />
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 속성 추가 버튼 */}
-          <div className="relative">
-            <button
-              onClick={() => setShowAddProperty(!showAddProperty)}
-              aria-label="속성 추가"
-              aria-expanded={showAddProperty}
-              aria-haspopup="menu"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span aria-hidden="true">+</span>
-            </button>
-            {showAddProperty && (
-              <div
-                className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[140px]"
-                role="menu"
-                aria-label="속성 추가 메뉴"
-              >
-                {allPropertyTypes.map((prop) => (
-                  <button
-                    key={prop.id}
-                    role="menuitem"
-                    onClick={() => handleAddProperty(prop.type)}
-                    className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                  >
-                    <span aria-hidden="true">{prop.icon}</span>
-                    {prop.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 삭제 버튼 */}
-          <button
-            onClick={handleDelete}
-            aria-label="블록 삭제 (Ctrl+Backspace)"
-            className="text-sm text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span aria-hidden="true">✕</span>
-          </button>
-        </div>
+        {/* 오른쪽: 삭제만 */}
+        <button
+          onClick={handleDelete}
+          aria-label="블록 삭제 (Ctrl+Backspace)"
+          className="text-sm text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span aria-hidden="true">✕</span>
+        </button>
       </header>
 
-      {/* 에디터 영역 - Typora 스타일 */}
+      {/* 메인 콘텐츠 - 스크롤 가능 */}
       <main className="flex-1 overflow-auto">
         <div className="note-view max-w-3xl mx-auto px-16 py-12 min-h-full">
-          {/* 이름 입력 영역 */}
+          {/* 1. 제목 입력 영역 */}
           <div className="mb-6">
             <input
               ref={nameInputRef}
@@ -696,6 +578,730 @@ export function NoteView({
             )}
           </div>
 
+          {/* 2. 속성 영역 (노션 스타일 - 세로 테이블) */}
+          {(propertyCount > 0 || true) && (
+            <div className="mb-6">
+              {/* 속성 헤더 (접기/펼치기) */}
+              <button
+                onClick={() => setIsPropertyExpanded(!isPropertyExpanded)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2"
+              >
+                <span>{isPropertyExpanded ? "▾" : "▸"}</span>
+                <span>속성 ({propertyCount})</span>
+              </button>
+
+              {/* 속성 목록 */}
+              {isPropertyExpanded && (
+                <div className="border border-border rounded-lg divide-y divide-border">
+                  {/* 체크박스 */}
+                  {checkboxProp && (
+                    <div className="flex items-center justify-between px-4 py-3 group">
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground">☑</span>
+                        {editingPropertyId === checkboxProp.id ? (
+                          <input
+                            type="text"
+                            defaultValue={checkboxProp.name}
+                            autoFocus
+                            className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                            onBlur={(e) => handlePropertyNameChange(checkboxProp.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handlePropertyNameChange(checkboxProp.id, e.currentTarget.value);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => setEditingPropertyId(checkboxProp.id)}
+                            className="text-sm text-muted-foreground hover:text-foreground"
+                          >
+                            {checkboxProp.name}
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleToggleCheckbox}
+                          className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                            isChecked
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-border hover:border-primary"
+                          }`}
+                        >
+                          {isChecked && <span className="text-xs">✓</span>}
+                        </button>
+                        <button
+                          onClick={() => handleRemoveProperty(checkboxProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 날짜 */}
+                  {dateProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">◇</span>
+                          {editingPropertyId === dateProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={dateProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(dateProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(dateProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(dateProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {dateProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={dateStr}
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            className="bg-accent/30 border border-border rounded px-2 py-1 text-xs"
+                          />
+                          <button
+                            onClick={() => handleRemoveProperty(dateProp.id)}
+                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-7">
+                        <button
+                          onClick={() => handleDateChange(today)}
+                          className={`text-xs px-2 py-1 rounded ${
+                            dateStr === today
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-accent hover:bg-accent/80"
+                          }`}
+                        >
+                          오늘
+                        </button>
+                        <button
+                          onClick={() => handleDateChange(tomorrow)}
+                          className={`text-xs px-2 py-1 rounded ${
+                            dateStr === tomorrow
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-accent hover:bg-accent/80"
+                          }`}
+                        >
+                          내일
+                        </button>
+                        <button
+                          onClick={() => handleDateChange(nextWeek)}
+                          className={`text-xs px-2 py-1 rounded ${
+                            dateStr === nextWeek
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-accent hover:bg-accent/80"
+                          }`}
+                        >
+                          다음주
+                        </button>
+                        {dateStr && (
+                          <button
+                            onClick={() => handleDateChange("")}
+                            className="text-xs px-2 py-1 rounded text-muted-foreground hover:bg-accent"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 우선순위 */}
+                  {priorityProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">!</span>
+                          {editingPropertyId === priorityProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={priorityProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(priorityProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(priorityProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(priorityProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {priorityProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(priorityProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex gap-2 ml-7">
+                        {PRIORITY_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => handlePriorityChange(opt.value)}
+                            className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
+                              priority === opt.value
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-accent hover:bg-accent/80"
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${opt.color}`} />
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 태그 */}
+                  {tagProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">#</span>
+                          {editingPropertyId === tagProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={tagProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(tagProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(tagProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(tagProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {tagProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(tagProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 ml-7">
+                        {allTags.map((tag) => (
+                          <button
+                            key={tag.id}
+                            onClick={() => handleToggleTag(tag.id)}
+                            className={`text-xs px-2 py-1 rounded transition-all ${
+                              tagIds.includes(tag.id)
+                                ? "ring-2 ring-offset-1"
+                                : "opacity-60 hover:opacity-100"
+                            }`}
+                            style={{
+                              backgroundColor: `${tag.color}20`,
+                              color: tag.color,
+                            }}
+                          >
+                            {tag.name}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setShowTagInput(!showTagInput)}
+                          className="text-xs px-2 py-1 rounded bg-accent hover:bg-accent/80 text-muted-foreground"
+                        >
+                          + 새 태그
+                        </button>
+                      </div>
+                      {showTagInput && (
+                        <div className="flex gap-2 items-center mt-2 ml-7">
+                          <input
+                            type="text"
+                            value={newTagName}
+                            onChange={(e) => setNewTagName(e.target.value)}
+                            placeholder="태그 이름"
+                            className="flex-1 bg-accent/30 border border-border rounded px-2 py-1 text-xs"
+                            onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
+                          />
+                          <div className="flex gap-1">
+                            {TAG_COLORS.slice(0, 5).map((color) => (
+                              <button
+                                key={color}
+                                onClick={() => setNewTagColor(color)}
+                                className={`w-4 h-4 rounded-full ${
+                                  newTagColor === color ? "ring-2 ring-offset-1" : ""
+                                }`}
+                                style={{ backgroundColor: color }}
+                              />
+                            ))}
+                          </div>
+                          <button
+                            onClick={handleCreateTag}
+                            disabled={!newTagName.trim()}
+                            className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+                          >
+                            추가
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 연락처 */}
+                  {contactProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">☎</span>
+                          {editingPropertyId === contactProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={contactProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(contactProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(contactProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(contactProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {contactProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(contactProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex gap-4 ml-7">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">전화</span>
+                          <input
+                            type="tel"
+                            value={contactPhone}
+                            onChange={(e) => handleContactChange("phone", e.target.value)}
+                            placeholder="010-0000-0000"
+                            className="bg-accent/30 border border-border rounded px-2 py-1 text-xs w-32"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">이메일</span>
+                          <input
+                            type="email"
+                            value={contactEmail}
+                            onChange={(e) => handleContactChange("email", e.target.value)}
+                            placeholder="email@example.com"
+                            className="bg-accent/30 border border-border rounded px-2 py-1 text-xs w-40"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 메모 */}
+                  {memoProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">≡</span>
+                          {editingPropertyId === memoProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={memoProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(memoProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(memoProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(memoProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {memoProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(memoProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <textarea
+                        value={memoText}
+                        onChange={(e) => handleMemoChange(e.target.value)}
+                        placeholder="메모를 입력하세요..."
+                        className="w-full ml-7 bg-accent/30 border border-border rounded px-3 py-2 text-sm resize-none h-20"
+                      />
+                    </div>
+                  )}
+
+                  {/* 반복 */}
+                  {repeatProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">↻</span>
+                          {editingPropertyId === repeatProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={repeatProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(repeatProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(repeatProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(repeatProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {repeatProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(repeatProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-2 ml-7">
+                        <div className="flex gap-2">
+                          {(["none", "daily", "weekly", "monthly"] as const).map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => handleRepeatChange(type)}
+                              className={`text-xs px-2 py-1 rounded ${
+                                repeatType === type
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-accent hover:bg-accent/80"
+                              }`}
+                            >
+                              {type === "none" ? "없음" : type === "daily" ? "매일" : type === "weekly" ? "매주" : "매월"}
+                            </button>
+                          ))}
+                        </div>
+                        {repeatType === "weekly" && (
+                          <div className="flex gap-1">
+                            {["일", "월", "화", "수", "목", "금", "토"].map((day, i) => (
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  const newDays = repeatWeekdays.includes(i)
+                                    ? repeatWeekdays.filter(d => d !== i)
+                                    : [...repeatWeekdays, i];
+                                  handleRepeatChange("weekly", newDays);
+                                }}
+                                className={`w-7 h-7 text-xs rounded ${
+                                  repeatWeekdays.includes(i)
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-accent hover:bg-accent/80"
+                                }`}
+                              >
+                                {day}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 사람 연결 */}
+                  {personProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">@</span>
+                          {editingPropertyId === personProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={personProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(personProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(personProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(personProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {personProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(personProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 ml-7">
+                        {linkedPersons.length > 0 ? (
+                          linkedPersons.map((person) => (
+                            <button
+                              key={person!.id}
+                              onClick={() => handleTogglePerson(person!.id)}
+                              className="text-xs px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30"
+                            >
+                              {person!.name || "이름 없음"} ✕
+                            </button>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">연결된 사람 없음</span>
+                        )}
+                        {contextBlocks.filter(b => b.properties.some(p => p.propertyType === "contact") && !personBlockIds.includes(b.id)).length > 0 && (
+                          <details className="relative">
+                            <summary className="text-xs px-2 py-1 rounded bg-accent hover:bg-accent/80 cursor-pointer list-none">
+                              + 추가
+                            </summary>
+                            <div className="absolute left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[120px] max-h-32 overflow-y-auto">
+                              {contextBlocks
+                                .filter(b => b.properties.some(p => p.propertyType === "contact") && !personBlockIds.includes(b.id))
+                                .map(b => (
+                                  <button
+                                    key={b.id}
+                                    onClick={() => handleTogglePerson(b.id)}
+                                    className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent"
+                                  >
+                                    {b.name || "이름 없음"}
+                                  </button>
+                                ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 긴급 (TOP 3) */}
+                  {urgentProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">★</span>
+                          {editingPropertyId === urgentProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={urgentProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(urgentProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(urgentProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(urgentProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {urgentProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(urgentProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex gap-2 ml-7">
+                        {([1, 2, 3] as const).map((slot) => (
+                          <button
+                            key={slot}
+                            onClick={() => handleUrgentChange(urgentSlot === slot ? undefined : slot)}
+                            className={`text-xs px-3 py-1 rounded ${
+                              urgentSlot === slot
+                                ? "bg-red-500 text-white"
+                                : "bg-accent hover:bg-accent/80"
+                            }`}
+                          >
+                            TOP {slot}
+                          </button>
+                        ))}
+                        {urgentSlot && (
+                          <button
+                            onClick={() => handleUrgentChange(undefined)}
+                            className="text-xs px-2 py-1 rounded text-muted-foreground hover:bg-accent"
+                          >
+                            해제
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 수업 시간 */}
+                  {durationProp && (
+                    <div className="px-4 py-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">⏱</span>
+                          {editingPropertyId === durationProp.id ? (
+                            <input
+                              type="text"
+                              defaultValue={durationProp.name}
+                              autoFocus
+                              className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
+                              onBlur={(e) => handlePropertyNameChange(durationProp.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handlePropertyNameChange(durationProp.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditingPropertyId(durationProp.id)}
+                              className="text-sm text-muted-foreground hover:text-foreground"
+                            >
+                              {durationProp.name}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveProperty(durationProp.id)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="flex gap-2 ml-7 items-center">
+                        {[30, 45, 60, 90, 120].map((mins) => (
+                          <button
+                            key={mins}
+                            onClick={() => handleDurationChange(mins)}
+                            className={`text-xs px-2 py-1 rounded ${
+                              durationMinutes === mins
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-accent hover:bg-accent/80"
+                            }`}
+                          >
+                            {mins}분
+                          </button>
+                        ))}
+                        <input
+                          type="number"
+                          value={durationMinutes || ""}
+                          onChange={(e) => handleDurationChange(parseInt(e.target.value) || 0)}
+                          placeholder="직접 입력"
+                          className="w-20 bg-accent/30 border border-border rounded px-2 py-1 text-xs"
+                          min="0"
+                        />
+                        <span className="text-xs text-muted-foreground">분</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 속성이 없을 때 */}
+                  {propertyCount === 0 && (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">
+                      속성이 없습니다
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 3. 속성 추가 버튼 */}
+              <div className="relative mt-2">
+                <button
+                  onClick={() => setShowAddProperty(!showAddProperty)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                >
+                  <span>+</span>
+                  <span>속성 추가</span>
+                </button>
+                {showAddProperty && (
+                  <div className="absolute left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[160px]">
+                    {allPropertyTypes.map((prop) => (
+                      <button
+                        key={prop.id}
+                        onClick={() => handleAddProperty(prop.type)}
+                        className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2"
+                      >
+                        <span>{prop.icon}</span>
+                        {prop.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 4. 구분선 */}
+          <hr className="border-border my-6" />
+
+          {/* 5. 댓글 섹션 (플레이스홀더) */}
+          <div className="mb-6 text-sm text-muted-foreground flex items-center gap-2">
+            <span>A</span>
+            <span>댓글 추가</span>
+            <span className="text-xs">(준비 중)</span>
+          </div>
+
+          {/* 6. 구분선 */}
+          <hr className="border-border my-6" />
+
+          {/* 7. 본문 (Tiptap 에디터) */}
           <EditorContent
             editor={editor}
             className="prose prose-lg max-w-none

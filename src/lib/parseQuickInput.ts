@@ -7,6 +7,8 @@
  * - [] 또는 /할일: 체크박스 자동 추가
  */
 
+import { getKoreanNow, toKoreanDateString } from "@/lib/dateFormat";
+
 export interface ParsedInput {
   content: string;      // 구문 제거된 순수 텍스트
   tags: string[];       // 추출된 태그 이름들
@@ -14,32 +16,32 @@ export interface ParsedInput {
   hasCheckbox: boolean; // 체크박스 추가 여부
 }
 
-// 날짜 키워드와 계산 함수
+// 날짜 키워드와 계산 함수 (한국 시간)
 const DATE_KEYWORDS: Record<string, () => string> = {
   "오늘": () => {
-    return new Date().toISOString().split("T")[0];
+    return toKoreanDateString(getKoreanNow());
   },
   "내일": () => {
-    const d = new Date();
+    const d = getKoreanNow();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   },
   "모레": () => {
-    const d = new Date();
+    const d = getKoreanNow();
     d.setDate(d.getDate() + 2);
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   },
   "다음주": () => {
-    const d = new Date();
+    const d = getKoreanNow();
     d.setDate(d.getDate() + 7);
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   },
   "이번주": () => {
     // 이번 주 일요일
-    const d = new Date();
+    const d = getKoreanNow();
     const day = d.getDay();
     d.setDate(d.getDate() + (7 - day));
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   },
 };
 

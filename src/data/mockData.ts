@@ -1,11 +1,12 @@
 import { Block } from "@/types/block";
 import { Tag } from "@/types/property";
 import { BlockType } from "@/types/blockType";
+import { getKoreanNow, toKoreanDateString } from "@/lib/dateFormat";
 
-// 오늘 날짜
-const today = new Date().toISOString().split("T")[0];
-const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+// 오늘 날짜 (한국 시간)
+const today = toKoreanDateString(getKoreanNow());
+const tomorrow = (() => { const d = getKoreanNow(); d.setDate(d.getDate() + 1); return toKoreanDateString(d); })();
+const nextWeek = (() => { const d = getKoreanNow(); d.setDate(d.getDate() + 7); return toKoreanDateString(d); })();
 
 // 태그 목업
 export const mockTags: Tag[] = [

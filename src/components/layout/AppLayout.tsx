@@ -13,6 +13,7 @@ import { useCustomViews } from "@/hooks/useCustomViews";
 import { useView, filterBlocksByView } from "@/hooks/useView";
 import { VIEW_LABELS } from "@/types/view";
 import { DEFAULT_PROPERTIES } from "@/types/property";
+import { getKoreanToday } from "@/lib/dateFormat";
 
 export function AppLayout() {
   const {
@@ -127,8 +128,8 @@ export function AppLayout() {
   const contextBlocks = useMemo(() => {
     if (view.type === "students") return studentBlocks;
     if (view.type === "dashboard") {
-      // 대시보드: TOP 3 + 오늘 할일
-      const todayStr = new Date().toISOString().split("T")[0];
+      // 대시보드: TOP 3 + 오늘 할일 (한국 시간)
+      const todayStr = getKoreanToday();
       const todayBlocks = blocks.filter((b) => {
         const dateProp = b.properties.find((p) => p.propertyType === "date");
         return dateProp?.value?.type === "date" && dateProp.value.date === todayStr;
@@ -214,7 +215,13 @@ export function AppLayout() {
   const handleAddSchedule = useCallback(
     (date: string, content: string, studentId?: string, isRepeat?: boolean, time?: string) => {
       const newBlockId = addBlock();
-      updateBlock(newBlockId, content);
+
+      // 학생 선택 시 → 수업 (제목에 학생 이름 저장)
+      if (studentId) {
+        updateBlockName(newBlockId, content); // 학생 이름을 제목에
+      } else {
+        updateBlock(newBlockId, content); // 일반 일정은 본문에
+      }
 
       // 날짜 속성 추가
       addProperty(newBlockId, "date");
@@ -236,7 +243,7 @@ export function AppLayout() {
       // 체크박스 추가 (할일로 관리 가능하게)
       addProperty(newBlockId, "checkbox");
     },
-    [addBlock, updateBlock, addProperty]
+    [addBlock, updateBlock, updateBlockName, addProperty]
   );
 
   // 자주 쓰는 태그 계산 (사용 빈도 기준 상위 5개)

@@ -4,26 +4,27 @@ import { useState, useCallback, useEffect } from "react";
 import { Block } from "@/types/block";
 import { Tag, DEFAULT_PROPERTIES, PropertyType, PriorityLevel, PRIORITY_COLORS, PRIORITY_LABELS, TAG_COLORS, RepeatType, REPEAT_LABELS, RepeatConfig } from "@/types/property";
 import { BlockType } from "@/types/blockType";
+import { getKoreanNow, toKoreanDateString } from "@/lib/dateFormat";
 
-// 빠른 날짜 선택 옵션
+// 빠른 날짜 선택 옵션 (한국 시간)
 const QUICK_DATES = [
-  { label: "오늘", getValue: () => new Date().toISOString().split("T")[0] },
+  { label: "오늘", getValue: () => toKoreanDateString(getKoreanNow()) },
   { label: "내일", getValue: () => {
-    const d = new Date();
+    const d = getKoreanNow();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   }},
   { label: "이번 주말", getValue: () => {
-    const d = new Date();
+    const d = getKoreanNow();
     const day = d.getDay();
     const diff = day === 0 ? 6 : 6 - day; // 토요일까지
     d.setDate(d.getDate() + diff);
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   }},
   { label: "다음 주", getValue: () => {
-    const d = new Date();
+    const d = getKoreanNow();
     d.setDate(d.getDate() + 7);
-    return d.toISOString().split("T")[0];
+    return toKoreanDateString(d);
   }},
 ];
 

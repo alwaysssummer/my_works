@@ -8,7 +8,7 @@ export interface ScheduleSettings {
 
 export const DEFAULT_SCHEDULE_SETTINGS: ScheduleSettings = {
   defaultDuration: 50,
-  startHour: 14,
-  endHour: 22,
+  startHour: 9,
+  endHour: 24,
   durationOptions: [30, 40, 50, 60],
 };

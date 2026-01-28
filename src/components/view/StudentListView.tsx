@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Block } from "@/types/block";
 import { BlockType } from "@/types/blockType";
 import { Tag } from "@/types/property";
-import { Plus, Phone, Mail, ChevronRight, Search, X, Users, BookOpen, UserPlus, Trophy } from "lucide-react";
+import { Plus, Phone, Mail, ChevronRight, Search, X, Users, BookOpen, UserPlus, Trophy, Trash2, Tag as TagIcon } from "lucide-react";
 import { useListNavigation } from "@/hooks/useListNavigation";
+import { getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 
 interface StudentListViewProps {
   blocks: Block[];
@@ -13,6 +14,8 @@ interface StudentListViewProps {
   tags: Tag[];
   onSelectBlock: (blockId: string) => void;
   onAddStudent: () => void;
+  // 일괄 작업 콜백 (향후 이동, 복사 등 확장 가능)
+  onDeleteBlocks?: (blockIds: string[]) => void;
 }
 
 export function StudentListView({
@@ -21,6 +24,7 @@ export function StudentListView({
   tags,
   onSelectBlock,
   onAddStudent,
+  onDeleteBlocks,
 }: StudentListViewProps) {
   // 학생 블록만 필터링 (contact 속성이 있는 블록을 학생으로 간주)
   const studentBlocks = useMemo(() => {
@@ -69,6 +73,12 @@ export function StudentListView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
+  // 다중 선택 상태
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 삭제 확인 상태
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   // 날짜 유틸리티 함수
   const getWeekStart = (date: Date) => {
     const d = new Date(date);
@@ -93,22 +103,20 @@ export function StudentListView({
     return date >= start && date <= end;
   };
 
-  // 1) 총 학생 수 & 이번달 신규
+  // 1) 총 학생 수 & 이번달 신규 (한국 시간)
   const totalStats = useMemo(() => {
-    const thisMonth = new Date().toISOString().slice(0, 7);
+    const thisMonth = getKoreanToday().slice(0, 7);
     const newThisMonth = studentBlocks.filter((b) => {
       if (!b.createdAt) return false;
-      const createdStr = b.createdAt instanceof Date
-        ? b.createdAt.toISOString()
-        : String(b.createdAt);
+      const createdStr = toKoreanDateString(b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt));
       return createdStr.slice(0, 7) === thisMonth;
     }).length;
     return { total: studentBlocks.length, newThisMonth };
   }, [studentBlocks]);
 
-  // 2) 이번주 수업 횟수
+  // 2) 이번주 수업 횟수 (한국 시간)
   const weeklyLessons = useMemo(() => {
-    const today = new Date();
+    const today = getKoreanNow();
     const weekStart = getWeekStart(today);
     const weekEnd = getWeekEnd(today);
 
@@ -124,9 +132,9 @@ export function StudentListView({
     }).length;
   }, [blocks]);
 
-  // 지난주 수업 횟수 (비교용)
+  // 지난주 수업 횟수 (비교용, 한국 시간)
   const lastWeekLessons = useMemo(() => {
-    const today = new Date();
+    const today = getKoreanNow();
     const lastWeekDate = new Date(today);
     lastWeekDate.setDate(lastWeekDate.getDate() - 7);
     const weekStart = getWeekStart(lastWeekDate);
@@ -225,6 +233,44 @@ export function StudentListView({
   const contactRate = contactStats.total > 0
     ? Math.round((contactStats.count / contactStats.total) * 100)
     : 0;
+
+  // 다중 선택 핸들러
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredStudents.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredStudents.map((s) => s.id)));
+    }
+  }, [filteredStudents, selectedIds.size]);
+
+  const handleToggleSelect = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  // 일괄 삭제 핸들러
+  const handleDeleteSelected = useCallback(() => {
+    if (onDeleteBlocks && selectedIds.size > 0) {
+      onDeleteBlocks(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      setShowDeleteConfirm(false);
+    }
+  }, [onDeleteBlocks, selectedIds]);
+
+  const isAllSelected = filteredStudents.length > 0 && selectedIds.size === filteredStudents.length;
+  const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredStudents.length;
 
   // 키보드 탐색 훅
   const { focusedId, listRef } = useListNavigation({
@@ -385,13 +431,49 @@ export function StudentListView({
         <section className="rounded-xl border border-border bg-card overflow-hidden">
           {/* 목록 헤더 */}
           <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h3 className="font-medium flex items-center gap-2">
-              <span>☰</span> 전체 학생 목록
-              <span className="text-sm text-muted-foreground font-normal">
-                ({filteredStudents.length}명)
-              </span>
-            </h3>
+            <div className="flex items-center gap-3">
+              {/* 전체 선택 체크박스 */}
+              <button
+                onClick={handleSelectAll}
+                className="w-5 h-5 border-2 border-border rounded flex items-center justify-center hover:border-blue-500 transition-colors"
+                aria-label={isAllSelected ? "전체 선택 해제" : "전체 선택"}
+              >
+                {isAllSelected && <span className="text-blue-600 text-sm">✓</span>}
+                {isSomeSelected && <span className="text-blue-600 text-xs">−</span>}
+              </button>
+              <h3 className="font-medium flex items-center gap-2">
+                <span>☰</span> 전체 학생 목록
+                <span className="text-sm text-muted-foreground font-normal">
+                  ({filteredStudents.length}명)
+                </span>
+              </h3>
+            </div>
             <div className="flex gap-2">
+              {/* 선택된 항목이 있을 때 일괄 작업 버튼 표시 */}
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2 mr-2">
+                  <span className="text-sm text-blue-600 font-medium">
+                    {selectedIds.size}명 선택
+                  </span>
+                  {/* 액션 버튼들 - 향후 이동, 복사 등 추가 가능 */}
+                  {onDeleteBlocks && (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 border border-red-200 rounded hover:bg-red-50 transition-colors"
+                      aria-label="선택한 학생 삭제"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      삭제
+                    </button>
+                  )}
+                  <button
+                    onClick={handleClearSelection}
+                    className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-accent transition-colors"
+                  >
+                    선택 해제
+                  </button>
+                </div>
+              )}
               {/* 검색 입력 */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -446,9 +528,26 @@ export function StudentListView({
                       className={`px-4 py-3 cursor-pointer transition-colors flex items-center gap-3 group ${
                         isFocused
                           ? "bg-primary/10 ring-2 ring-inset ring-primary/50"
+                          : selectedIds.has(student.id)
+                          ? "bg-blue-50"
                           : "hover:bg-accent/50"
                       }`}
                     >
+                      {/* 체크박스 */}
+                      <button
+                        onClick={(e) => handleToggleSelect(student.id, e)}
+                        className={`w-5 h-5 border-2 rounded flex items-center justify-center shrink-0 transition-colors ${
+                          selectedIds.has(student.id)
+                            ? "border-blue-500 bg-blue-500"
+                            : "border-border hover:border-blue-500"
+                        }`}
+                        aria-label={selectedIds.has(student.id) ? "선택 해제" : "선택"}
+                      >
+                        {selectedIds.has(student.id) && (
+                          <span className="text-white text-sm">✓</span>
+                        )}
+                      </button>
+
                       {/* 이름 */}
                       <span className="font-medium flex-1 truncate">
                         {student.name || getPlainText(student.content) || "이름 없음"}
@@ -496,6 +595,40 @@ export function StudentListView({
           </div>
         </section>
       </div>
+
+      {/* 삭제 확인 모달 */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="bg-background rounded-xl p-6 max-w-sm mx-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-medium mb-2">학생 삭제</h3>
+            <p className="text-muted-foreground mb-4">
+              선택한 {selectedIds.size}명의 학생을 삭제할까요?
+              <br />
+              <span className="text-sm text-red-500">이 작업은 되돌릴 수 없어요.</span>
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

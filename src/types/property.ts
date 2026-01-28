@@ -1,3 +1,5 @@
+import { getKoreanToday } from "@/lib/dateFormat";
+
 // 속성 타입
 export type PropertyType =
   | "checkbox"
@@ -179,7 +181,7 @@ export function createPropertyValue(type: PropertyType): PropertyValue {
     case "checkbox":
       return { type: "checkbox", checked: false };
     case "date":
-      return { type: "date", date: new Date().toISOString().split("T")[0] };
+      return { type: "date", date: getKoreanToday() };
     case "tag":
       return { type: "tag", tagIds: [] };
     case "text":
@@ -199,7 +201,7 @@ export function createPropertyValue(type: PropertyType): PropertyValue {
     case "memo":
       return { type: "memo", text: "" };
     case "urgent":
-      return { type: "urgent", addedAt: new Date().toISOString().split("T")[0], slotIndex: 0 };
+      return { type: "urgent", addedAt: getKoreanToday(), slotIndex: 0 };
     case "duration":
       return { type: "duration", minutes: 50 }; // 기본 50분
   }
