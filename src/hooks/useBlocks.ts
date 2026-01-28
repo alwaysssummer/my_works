@@ -342,9 +342,14 @@ export function useBlocks() {
     );
   }, []);
 
-  // 블록 추가
-  const addBlock = useCallback((afterId?: string) => {
+  // 블록 추가 (options로 name/content 지정 가능)
+  const addBlock = useCallback((
+    afterId?: string,
+    options?: { name?: string; content?: string }
+  ) => {
     const newBlockId = crypto.randomUUID();
+    const initialName = options?.name || "";
+    const initialContent = options?.content || "";
 
     setBlocks((prev) => {
       let inheritedIndent = 0;
@@ -352,8 +357,8 @@ export function useBlocks() {
       if (!afterId || prev.length === 0) {
         const newBlock: Block = {
           id: newBlockId,
-          name: "",
-          content: "",
+          name: initialName,
+          content: initialContent,
           indent: inheritedIndent,
           isCollapsed: false,
           isPinned: false,
@@ -369,8 +374,8 @@ export function useBlocks() {
       if (index === -1) {
         const newBlock: Block = {
           id: newBlockId,
-          name: "",
-          content: "",
+          name: initialName,
+          content: initialContent,
           indent: inheritedIndent,
           isCollapsed: false,
           isPinned: false,
@@ -386,8 +391,8 @@ export function useBlocks() {
       const inheritedColumn = prev[index].column;
       const newBlock: Block = {
         id: newBlockId,
-        name: "",
-        content: "",
+        name: initialName,
+        content: initialContent,
         indent: inheritedIndent,
         isCollapsed: false,
         isPinned: false,

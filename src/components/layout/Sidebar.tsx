@@ -12,6 +12,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 interface StudentInfo {
   id: string;
   name: string;
+  weeklyLessonCount: number;  // 이번 주 수업 횟수
 }
 
 interface SidebarProps {
@@ -51,8 +52,8 @@ export function Sidebar({
   const [showViewModal, setShowViewModal] = useState(false);
   const [isStudentExpanded, setIsStudentExpanded] = useState(true);
 
-  // 기본 뷰 (전체, 캘린더, 주간 시간표)
-  const mainViews: ViewType[] = ["all", "calendar", "weekly"];
+  // 기본 뷰 (전체, 캘린더, 주간 시간표, 마감일)
+  const mainViews: ViewType[] = ["all", "calendar", "weekly", "deadline"];
 
   return (
     <aside className="w-60 h-screen border-r border-border bg-sidebar flex flex-col">
@@ -151,9 +152,14 @@ export function Sidebar({
                 <button
                   key={student.id}
                   onClick={() => onSelectStudent(student.id)}
-                  className="w-full px-3 py-1.5 text-left text-sm rounded-md hover:bg-sidebar-accent/50 text-sidebar-foreground truncate pl-6"
+                  className="w-full px-3 py-1.5 text-left text-sm rounded-md hover:bg-sidebar-accent/50 text-sidebar-foreground pl-6 flex items-center justify-between"
                 >
-                  {displayName.length > 15 ? displayName.slice(0, 15) + "..." : displayName}
+                  <span className="truncate">
+                    {displayName.length > 12 ? displayName.slice(0, 12) + "..." : displayName}
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
+                    {student.weeklyLessonCount}
+                  </span>
                 </button>
               );
             })}

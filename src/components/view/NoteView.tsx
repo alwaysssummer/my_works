@@ -71,6 +71,11 @@ export function NoteView({
   const [blockName, setBlockName] = useState(block.name || "");
   const nameInputRef = useRef<HTMLInputElement>(null);
 
+  // block이 변경될 때 이름 동기화
+  useEffect(() => {
+    setBlockName(block.name || "");
+  }, [block.id]);
+
   // 속성 관련 상태
   const [isPropertyExpanded, setIsPropertyExpanded] = useState(true);
   const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
@@ -505,17 +510,8 @@ export function NoteView({
 
       {/* 상단 바 - 간소화 */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative z-10">
-        {/* 왼쪽: 돌아가기 + 이전/다음 버튼 */}
+        {/* 왼쪽: 이전/다음 버튼 */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={onClose}
-            aria-label="목록으로 돌아가기"
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring rounded"
-          >
-            <span aria-hidden="true">←</span>
-            <span>돌아가기</span>
-          </button>
-
           {/* 이전/다음 이동 버튼 */}
           {hasNavigation && (
             <nav className="flex items-center gap-1 ml-4 border-l border-border pl-4" aria-label="블록 탐색">

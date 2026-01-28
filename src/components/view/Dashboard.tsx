@@ -6,7 +6,8 @@ import { X, Plus, ChevronRight, Clock, Flame, Search } from "lucide-react";
 import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
-import { formatDateWithWeekday, getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
+import { formatDateWithWeekday, getKoreanNow, getKoreanToday, toKoreanDateString, calculateDday } from "@/lib/dateFormat";
+import { processBlockInput } from "@/lib/blockDefaults";
 
 // TOP 3 선택 모달 컴포넌트
 function Top3SelectorModal({
@@ -86,8 +87,9 @@ interface DashboardProps {
   top3History: Top3History[];
   onAddToTop3: (blockId: string, slotIndex?: number) => void;
   onRemoveFromTop3: (blockId: string) => void;
-  onAddBlock: (afterId?: string) => string;
+  onAddBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   onUpdateBlock: (id: string, content: string) => void;
+  onUpdateBlockName: (id: string, name: string) => void;
   onToggleCheckbox: (blockId: string, checked: boolean) => void;
   onSelectBlock: (blockId: string) => void;
 }
@@ -100,6 +102,7 @@ export function Dashboard({
   onRemoveFromTop3,
   onAddBlock,
   onUpdateBlock,
+  onUpdateBlockName,
   onToggleCheckbox,
   onSelectBlock,
 }: DashboardProps) {
@@ -124,9 +127,13 @@ export function Dashboard({
       setDirectInput("");
       return;
     }
-    // 새 블록 생성
-    const newBlockId = onAddBlock();
-    onUpdateBlock(newBlockId, directInput.trim());
+    // 입력 처리 (name/content 분할)
+    const processed = processBlockInput(directInput.trim());
+    // 새 블록 생성 (name/content를 옵션으로 전달하여 동기적으로 설정)
+    const newBlockId = onAddBlock(undefined, {
+      name: processed.name,
+      content: processed.content,
+    });
     // TOP 3에 추가 (슬롯 인덱스 전달)
     onAddToTop3(newBlockId, editingSlotIndex ?? undefined);
     // 상태 초기화
@@ -163,13 +170,16 @@ export function Dashboard({
     return top3History.find((h) => h.date === yesterday);
   }, [top3History, yesterday]);
 
-  // 오늘 일정 (날짜 속성이 오늘인 블록)
-  const todaySchedule = useMemo(() => {
-    return blocks
-      .filter((block) => {
-        const dateProp = block.properties.find((p) => p.propertyType === "date");
-        return dateProp?.value.type === "date" && dateProp.value.date === today;
-      })
+  // 오늘 일정 - 마감과 수업 분리
+  const todayData = useMemo(() => {
+    const todayBlocks = blocks.filter((block) => {
+      const dateProp = block.properties.find((p) => p.propertyType === "date");
+      return dateProp?.value.type === "date" && dateProp.value.date === today;
+    });
+
+    // 수업 (person 속성이 있는 것) - 시간순 정렬
+    const lessons = todayBlocks
+      .filter((b) => b.properties.some((p) => p.propertyType === "person"))
       .sort((a, b) => {
         const timeA = a.properties.find((p) => p.propertyType === "date")?.value;
         const timeB = b.properties.find((p) => p.propertyType === "date")?.value;
@@ -178,7 +188,39 @@ export function Dashboard({
         }
         return 0;
       });
+
+    // 마감 (person 속성이 없는 것)
+    const deadlines = todayBlocks.filter(
+      (b) => !b.properties.some((p) => p.propertyType === "person")
+    );
+
+    return { lessons, deadlines };
   }, [blocks, today]);
+
+  // 다가오는 마감 (오늘 제외, 7일 이내)
+  const upcomingDeadlines = useMemo(() => {
+    return blocks
+      .filter((block) => {
+        const dateProp = block.properties.find((p) => p.propertyType === "date");
+        if (dateProp?.value.type !== "date" || !dateProp.value.date) return false;
+        // person 속성이 있으면 수업이므로 제외
+        if (block.properties.some((p) => p.propertyType === "person")) return false;
+        const dday = calculateDday(dateProp.value.date);
+        return !dday.isPast && !dday.isToday && dday.days <= 7;
+      })
+      .map((block) => {
+        const dateProp = block.properties.find((p) => p.propertyType === "date");
+        const dateStr = dateProp!.value.type === "date" ? dateProp!.value.date : "";
+        return { block, dateStr, dday: calculateDday(dateStr) };
+      })
+      .sort((a, b) => a.dateStr.localeCompare(b.dateStr))
+      .slice(0, 5);
+  }, [blocks]);
+
+  // 하위 호환성을 위한 todaySchedule
+  const todaySchedule = useMemo(() => {
+    return [...todayData.deadlines, ...todayData.lessons];
+  }, [todayData]);
 
   // TOP 3에 추가할 수 있는 블록 (이미 TOP 3가 아닌 것)
   const availableBlocks = useMemo(() => {
@@ -189,8 +231,13 @@ export function Dashboard({
   // 빠른 메모 추가
   const handleQuickMemoSubmit = () => {
     if (!quickMemo.trim()) return;
-    const newBlockId = onAddBlock();
-    onUpdateBlock(newBlockId, quickMemo.trim());
+    // 입력 처리 (name/content 분할)
+    const processed = processBlockInput(quickMemo.trim());
+    // 새 블록 생성 (name/content를 옵션으로 전달하여 동기적으로 설정)
+    onAddBlock(undefined, {
+      name: processed.name,
+      content: processed.content,
+    });
     setQuickMemo("");
   };
 
@@ -333,7 +380,7 @@ export function Dashboard({
                             {parsed.icon && (
                               <span style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
                             )}
-                            {getBlockTitle(block.content, 40)}
+                            {block.name || getBlockTitle(block.content, 40)}
                           </span>
                         );
                       })()}
@@ -457,66 +504,184 @@ export function Dashboard({
             <Clock className="w-5 h-5 text-blue-500" />
             <h2 className="text-lg font-semibold">오늘 일정</h2>
             <span className="text-sm text-muted-foreground">
-              ({todaySchedule.length}건)
+              ({todayData.deadlines.length + todayData.lessons.length}건)
             </span>
           </div>
 
-          {todaySchedule.length > 0 ? (
-            <div ref={listRef} className="space-y-2">
-              {todaySchedule.map((block) => {
-                const dateProp = block.properties.find((p) => p.propertyType === "date");
-                const time =
-                  dateProp?.value.type === "date" ? dateProp.value.time : undefined;
+          {todayData.deadlines.length === 0 && todayData.lessons.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              오늘 예정된 일정이 없어요
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* 오늘 마감 */}
+              {todayData.deadlines.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-red-600 mb-2 flex items-center gap-1">
+                    <span>⏰</span> 마감
+                  </div>
+                  <div className="space-y-2">
+                    {todayData.deadlines.map((block) => {
+                      const checkboxProp = block.properties.find(
+                        (p) => p.propertyType === "checkbox"
+                      );
+                      const checked =
+                        checkboxProp?.value.type === "checkbox" &&
+                        checkboxProp.value.checked;
+                      const isFocused = block.id === focusedId;
+
+                      return (
+                        <div
+                          key={block.id}
+                          data-list-item
+                          onClick={() => onSelectBlock(block.id)}
+                          className={`flex items-center gap-3 p-3 rounded-lg border bg-red-50 cursor-pointer transition-colors ${
+                            isFocused
+                              ? "border-red-400 ring-2 ring-red-200"
+                              : "border-red-200 hover:bg-red-100"
+                          }`}
+                        >
+                          {(() => {
+                            const parsed = parseBlockContent(block.content);
+                            return (
+                              <span
+                                className={`flex-1 text-sm flex items-center gap-1 ${
+                                  checked ? "line-through text-muted-foreground" : ""
+                                }`}
+                              >
+                                {parsed.icon && (
+                                  <span style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
+                                )}
+                                {block.name || getBlockTitle(block.content, 50)}
+                              </span>
+                            );
+                          })()}
+                          <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                            D-day
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-red-400" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 오늘 수업 */}
+              {todayData.lessons.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-blue-600 mb-2 flex items-center gap-1">
+                    <span>○</span> 수업
+                  </div>
+                  <div ref={listRef} className="space-y-2">
+                    {todayData.lessons.map((block) => {
+                      const dateProp = block.properties.find((p) => p.propertyType === "date");
+                      const time =
+                        dateProp?.value.type === "date" ? dateProp.value.time : undefined;
+                      const checkboxProp = block.properties.find(
+                        (p) => p.propertyType === "checkbox"
+                      );
+                      const checked =
+                        checkboxProp?.value.type === "checkbox" &&
+                        checkboxProp.value.checked;
+                      const isFocused = block.id === focusedId;
+
+                      return (
+                        <div
+                          key={block.id}
+                          data-list-item
+                          onClick={() => onSelectBlock(block.id)}
+                          className={`flex items-center gap-3 p-3 rounded-lg border bg-card cursor-pointer transition-colors ${
+                            isFocused
+                              ? "border-primary bg-primary/10 ring-2 ring-primary/50"
+                              : "border-border hover:bg-accent/50"
+                          }`}
+                        >
+                          {time && (
+                            <span className="text-sm font-mono text-blue-600 w-14">
+                              {time}
+                            </span>
+                          )}
+                          {(() => {
+                            const parsed = parseBlockContent(block.content);
+                            return (
+                              <span
+                                className={`flex-1 text-sm flex items-center gap-1 ${
+                                  checked ? "line-through text-muted-foreground" : ""
+                                }`}
+                              >
+                                {parsed.icon && (
+                                  <span style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
+                                )}
+                                {block.name || getBlockTitle(block.content, 50)}
+                              </span>
+                            );
+                          })()}
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* 다가오는 마감 섹션 */}
+        {upcomingDeadlines.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-lg">⏰</span>
+              <h2 className="text-lg font-semibold">다가오는 마감</h2>
+            </div>
+
+            <div className="space-y-2">
+              {upcomingDeadlines.map(({ block, dateStr, dday }) => {
+                const dateObj = new Date(dateStr);
+                const dayName = ["일", "월", "화", "수", "목", "금", "토"][dateObj.getDay()];
                 const checkboxProp = block.properties.find(
                   (p) => p.propertyType === "checkbox"
                 );
                 const checked =
                   checkboxProp?.value.type === "checkbox" &&
                   checkboxProp.value.checked;
-                const isFocused = block.id === focusedId;
 
                 return (
                   <div
                     key={block.id}
-                    data-list-item
                     onClick={() => onSelectBlock(block.id)}
-                    className={`flex items-center gap-3 p-3 rounded-lg border bg-card cursor-pointer transition-colors ${
-                      isFocused
-                        ? "border-primary bg-primary/10 ring-2 ring-primary/50"
-                        : "border-border hover:bg-accent/50"
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      checked
+                        ? "bg-muted/30 border-muted"
+                        : "bg-card border-border hover:bg-accent/50"
                     }`}
                   >
-                    {time && (
-                      <span className="text-sm font-mono text-blue-600 w-14">
-                        {time}
-                      </span>
-                    )}
-                    {(() => {
-                      const parsed = parseBlockContent(block.content);
-                      return (
-                        <span
-                          className={`flex-1 text-sm flex items-center gap-1 ${
-                            checked ? "line-through text-muted-foreground" : ""
-                          }`}
-                        >
-                          {parsed.icon && (
-                            <span style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
-                          )}
-                          {getBlockTitle(block.content, 50)}
-                        </span>
-                      );
-                    })()}
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground w-20">
+                      {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName})
+                    </span>
+                    <span
+                      className={`flex-1 text-sm ${
+                        checked ? "line-through text-muted-foreground" : ""
+                      }`}
+                    >
+                      {block.name || getBlockTitle(block.content, 40)}
+                    </span>
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded ${
+                        dday.days <= 3
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {dday.label}
+                    </span>
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              오늘 예정된 일정이 없어요
-            </div>
-          )}
-        </section>
+          </section>
+        )}
 
         {/* 빠른 메모 섹션 */}
         <section>

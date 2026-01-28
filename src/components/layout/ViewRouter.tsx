@@ -10,6 +10,7 @@ import { StudentListView } from "@/components/view/StudentListView";
 import { Dashboard } from "@/components/view/Dashboard";
 import { WeeklySchedule } from "@/components/view/WeeklySchedule";
 import { CalendarView } from "@/components/view/CalendarView";
+import { DeadlineView } from "@/components/view/DeadlineView";
 import { Editor } from "@/components/layout/Editor";
 
 // 공통 props
@@ -34,6 +35,7 @@ interface DashboardProps extends CommonProps {
   onRemoveFromTop3: (blockId: string) => void;
   onAddBlock: (afterId?: string) => string;
   onUpdateBlock: (id: string, content: string) => void;
+  onUpdateBlockName: (id: string, name: string) => void;
   onToggleCheckbox: (blockId: string, checked: boolean) => void;
 }
 
@@ -43,6 +45,8 @@ interface WeeklyProps extends CommonProps {
   onAddBlock: (afterId?: string) => string;
   onUpdateBlock: (id: string, content: string) => void;
   onAddProperty: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: BlockProperty["value"]) => void;
+  onUpdateProperty: (blockId: string, propertyId: string, value: BlockProperty["value"]) => void;
+  onDeleteBlock: (id: string) => void;
 }
 
 // 학생 정보 타입 (캘린더용)
@@ -252,6 +256,7 @@ export function ViewRouter({
         onRemoveFromTop3={onRemoveFromTop3}
         onAddBlock={onAddBlock}
         onUpdateBlock={onUpdateBlock}
+        onUpdateBlockName={onUpdateBlockName}
         onToggleCheckbox={onToggleCheckbox}
         onSelectBlock={onSelectBlock}
       />
@@ -268,7 +273,20 @@ export function ViewRouter({
         onUpdateBlock={onUpdateBlock}
         onUpdateBlockName={onUpdateBlockName}
         onAddProperty={onAddProperty}
+        onUpdateProperty={onUpdateProperty}
+        onDeleteBlock={onDeleteBlock}
         onSelectBlock={onSelectBlock}
+      />
+    );
+  }
+
+  // 마감일 뷰
+  if (view.type === "deadline") {
+    return (
+      <DeadlineView
+        blocks={blocks}
+        onSelectBlock={onSelectBlock}
+        onToggleCheckbox={onToggleCheckbox}
       />
     );
   }

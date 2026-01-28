@@ -6,12 +6,14 @@ import { Block } from "@/types/block";
 import { Tag, PropertyType, TAG_COLORS } from "@/types/property";
 import { DraggableBlock } from "./DraggableBlock";
 import { parseQuickInput } from "@/lib/parseQuickInput";
+import { processBlockInput } from "@/lib/blockDefaults";
 
 interface InboxColumnProps {
   blocks: Block[];
   allTags: Tag[];
-  onAddBlock: () => string;
+  onAddBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   onUpdateBlock: (id: string, content: string) => void;
+  onUpdateBlockName?: (id: string, name: string) => void;
   onOpenDetail: (id: string) => void;
   onAddProperty?: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
   onCreateTag?: (name: string, color: string) => Tag;
@@ -22,6 +24,7 @@ export function InboxColumn({
   allTags,
   onAddBlock,
   onUpdateBlock,
+  onUpdateBlockName,
   onOpenDetail,
   onAddProperty,
   onCreateTag,
@@ -89,11 +92,16 @@ export function InboxColumn({
       const lines = inputValue.trim().split("\n");
       lines.forEach((line) => {
         if (line.trim()) {
-          // 빠른 입력 파싱
+          // 빠른 입력 파싱 (태그, 날짜 등 속성 추출)
           const parsed = parseQuickInput(line.trim());
+          // 블록 입력 처리 (name/content 분할)
+          const processed = processBlockInput(parsed.content || line.trim());
 
-          const newId = onAddBlock();
-          onUpdateBlock(newId, `<p>${parsed.content || line.trim()}</p>`);
+          // 새 블록 생성 (name/content를 옵션으로 전달하여 동기적으로 설정)
+          const newId = onAddBlock(undefined, {
+            name: processed.name,
+            content: processed.content,
+          });
 
           // 파싱된 속성 적용
           applyParsedProperties(newId, parsed);
@@ -102,7 +110,7 @@ export function InboxColumn({
       setInputValue("");
       setIsInputExpanded(false);
     }
-  }, [inputValue, onAddBlock, onUpdateBlock, applyParsedProperties]);
+  }, [inputValue, onAddBlock, applyParsedProperties]);
 
   return (
     <div

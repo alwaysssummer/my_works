@@ -8,6 +8,7 @@ import { ViewType } from "@/types/view";
 import { BlockItem, PropertyModal } from "@/components/block";
 import { NoteView } from "@/components/view/NoteView";
 import { ThreeColumnLayout } from "./columns";
+import { processBlockInput } from "@/lib/blockDefaults";
 
 // 정렬 타입
 type SortType = "newest" | "oldest" | "date" | "priority";
@@ -35,7 +36,7 @@ interface EditorProps {
   viewType: ViewType;
   tags: Tag[];
   blockTypes: BlockType[];
-  onAddBlock: (afterId?: string) => string;
+  onAddBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   onUpdateBlock: (id: string, content: string) => void;
   onDeleteBlock: (id: string) => void;
   onIndentBlock: (id: string) => void;
@@ -191,17 +192,20 @@ export function Editor({
   const handleQuickInputSubmit = useCallback(() => {
     if (quickInputValue.trim()) {
       const lines = quickInputValue.trim().split("\n");
-      // 각 줄마다 블록 생성
+      // 각 줄마다 블록 생성 (name/content를 옵션으로 전달)
       lines.forEach((line) => {
         if (line.trim()) {
-          const newId = onAddBlock();
-          onUpdateBlock(newId, `<p>${line.trim()}</p>`);
+          const processed = processBlockInput(line.trim());
+          onAddBlock(undefined, {
+            name: processed.name,
+            content: processed.content,
+          });
         }
       });
       setQuickInputValue("");
       setQuickInputExpanded(false);
     }
-  }, [quickInputValue, onAddBlock, onUpdateBlock]);
+  }, [quickInputValue, onAddBlock]);
 
   // 빠른 입력창에 포커스 (외부에서 호출용)
   const focusQuickInput = useCallback(() => {
@@ -413,6 +417,7 @@ export function Editor({
             allTags={tags}
             onAddBlock={onAddBlock}
             onUpdateBlock={onUpdateBlock}
+            onUpdateBlockName={onUpdateBlockName}
             onMoveToColumn={onMoveToColumn}
             onOpenDetail={handleOpenPropertyPanel}
             onAddProperty={onAddProperty}

@@ -241,3 +241,78 @@ export function formatPercent(
     maximumFractionDigits: 1,
   }).format(num);
 }
+
+/**
+ * D-day 계산 (오늘 기준)
+ * @param dateStr - YYYY-MM-DD 형식
+ * @returns { days: number, label: string, isPast: boolean, isToday: boolean }
+ */
+export function calculateDday(dateStr: string): {
+  days: number;
+  label: string;
+  isPast: boolean;
+  isToday: boolean;
+} {
+  const today = getKoreanToday();
+  const todayDate = new Date(today);
+  const targetDate = new Date(dateStr);
+
+  // 날짜 차이 계산 (일 단위)
+  const diffTime = targetDate.getTime() - todayDate.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  const isToday = diffDays === 0;
+  const isPast = diffDays < 0;
+
+  let label: string;
+  if (isToday) {
+    label = "D-day";
+  } else if (isPast) {
+    label = `D+${Math.abs(diffDays)}`;
+  } else {
+    label = `D-${diffDays}`;
+  }
+
+  return { days: diffDays, label, isPast, isToday };
+}
+
+/**
+ * 날짜가 이번 주인지 확인
+ */
+export function isThisWeek(dateStr: string): boolean {
+  const today = getKoreanNow();
+  const day = today.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() + diff);
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+
+  const target = new Date(dateStr);
+  return target >= weekStart && target <= weekEnd;
+}
+
+/**
+ * 날짜가 다음 주인지 확인
+ */
+export function isNextWeek(dateStr: string): boolean {
+  const today = getKoreanNow();
+  const day = today.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+
+  const thisWeekStart = new Date(today);
+  thisWeekStart.setDate(today.getDate() + diff);
+
+  const nextWeekStart = new Date(thisWeekStart);
+  nextWeekStart.setDate(thisWeekStart.getDate() + 7);
+  nextWeekStart.setHours(0, 0, 0, 0);
+
+  const nextWeekEnd = new Date(nextWeekStart);
+  nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+
+  const target = new Date(dateStr);
+  return target >= nextWeekStart && target <= nextWeekEnd;
+}

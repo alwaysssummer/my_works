@@ -1,5 +1,5 @@
 // 뷰 타입
-export type ViewType = "all" | "todo" | "tag" | "calendar" | "weekly" | "custom" | "dashboard" | "students";
+export type ViewType = "all" | "todo" | "tag" | "calendar" | "weekly" | "custom" | "dashboard" | "students" | "deadline";
 
 export interface View {
   type: ViewType;
@@ -18,6 +18,7 @@ export const VIEW_LABELS: Record<ViewType, string> = {
   weekly: "주간 시간표",
   custom: "커스텀",
   students: "학생 목록",
+  deadline: "마감일",
 };
 
 export const VIEW_ICONS: Record<ViewType, string> = {
@@ -29,4 +30,5 @@ export const VIEW_ICONS: Record<ViewType, string> = {
   weekly: "▦",
   custom: "▤",
   students: "○",
+  deadline: "⏰",
 };

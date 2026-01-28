@@ -2,7 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Block } from "@/types/block";
+import { Block, getBlockDisplayName } from "@/types/block";
 import { Tag } from "@/types/property";
 
 interface DraggableBlockProps {
@@ -28,10 +28,8 @@ export function DraggableBlock({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  // content에서 텍스트만 추출
-  const textContent = block.content
-    .replace(/<[^>]+>/g, "")
-    .trim() || "빈 블록";
+  // 블록 표시 이름 가져오기 (name 우선, 없으면 content 첫 줄)
+  const textContent = getBlockDisplayName(block);
 
   // 체크박스 상태
   const checkbox = block.properties.find((p) => p.propertyType === "checkbox");

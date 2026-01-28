@@ -23,8 +23,9 @@ import { useState } from "react";
 interface ThreeColumnLayoutProps {
   blocks: Block[];
   allTags: Tag[];
-  onAddBlock: () => string;
+  onAddBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   onUpdateBlock: (id: string, content: string) => void;
+  onUpdateBlockName?: (id: string, name: string) => void;
   onMoveToColumn: (id: string, column: BlockColumn) => void;
   onOpenDetail: (id: string) => void;
   onAddProperty?: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
@@ -36,6 +37,7 @@ export function ThreeColumnLayout({
   allTags,
   onAddBlock,
   onUpdateBlock,
+  onUpdateBlockName,
   onMoveToColumn,
   onOpenDetail,
   onAddProperty,
@@ -138,6 +140,7 @@ export function ThreeColumnLayout({
           allTags={allTags}
           onAddBlock={handleAddInboxBlock}
           onUpdateBlock={onUpdateBlock}
+          onUpdateBlockName={onUpdateBlockName}
           onOpenDetail={onOpenDetail}
           onAddProperty={onAddProperty}
           onCreateTag={onCreateTag}

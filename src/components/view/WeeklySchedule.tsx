@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Block, BlockProperty, getBlockDisplayName } from "@/types/block";
 import { PropertyType } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
-import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay } from "@/lib/dateFormat";
+import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay, calculateDday } from "@/lib/dateFormat";
 
 interface WeeklyScheduleProps {
   blocks: Block[];
@@ -15,6 +15,8 @@ interface WeeklyScheduleProps {
   onUpdateBlock: (id: string, content: string) => void;
   onUpdateBlockName: (id: string, name: string) => void;
   onAddProperty: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: BlockProperty["value"]) => void;
+  onUpdateProperty: (blockId: string, propertyId: string, value: BlockProperty["value"]) => void;
+  onDeleteBlock: (id: string) => void;
   onSelectBlock: (blockId: string) => void;
 }
 
@@ -45,6 +47,8 @@ export function WeeklySchedule({
   onUpdateBlock,
   onUpdateBlockName,
   onAddProperty,
+  onUpdateProperty,
+  onDeleteBlock,
   onSelectBlock,
 }: WeeklyScheduleProps) {
   // 현재 주의 시작일 (월요일 기준, 한국 시간)
@@ -58,11 +62,15 @@ export function WeeklySchedule({
     return monday;
   });
 
-  // 수업 추가 모달 상태
+  // 수업 추가/수정 모달 상태
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalData, setAddModalData] = useState<{
     date: string;
     time: string;
+    overlapCount?: number;
+    timeRange?: { start: number; end: number } | null;
+    overlappingEvents?: ScheduleEvent[];
+    editingEvent?: ScheduleEvent;  // 수정 모드일 때 기존 일정
   } | null>(null);
 
   // 학생 블록 목록 (contact 속성이 있는 블록을 학생으로 간주)
@@ -227,7 +235,7 @@ export function WeeklySchedule({
     });
 
     const index = overlapping.findIndex((e) => e.block.id === targetEvent.block.id);
-    return { index, count: overlapping.length };
+    return { index, count: overlapping.length, overlapping };
   }, []);
 
   // 이전 주로 이동
@@ -259,12 +267,54 @@ export function WeeklySchedule({
     setWeekStart(monday);
   }, []);
 
-  // 빈 영역 클릭 시 수업 추가
+  // 과거 날짜 체크 (오늘 이전이면 true)
+  const isPastDate = useCallback((dateStr: string) => {
+    const today = getKoreanToday();
+    return dateStr < today;
+  }, []);
+
+  // 수업 삭제 핸들러
+  const handleDeleteLesson = useCallback((blockId: string, block: Block) => {
+    const repeatProp = block.properties.find(p => p.propertyType === "repeat");
+    const isRepeat = repeatProp?.value?.type === "repeat" && repeatProp.value.config;
+
+    if (isRepeat) {
+      // 반복 수업: 확인 후 전체 삭제
+      if (confirm("이 반복 수업을 삭제하시겠습니까?\n모든 반복이 삭제됩니다.")) {
+        onDeleteBlock(blockId);
+      }
+    } else {
+      // 단순 수업: 바로 삭제
+      onDeleteBlock(blockId);
+    }
+  }, [onDeleteBlock]);
+
+  // 빈 영역 클릭 시 수업 추가 (겹치는 일정 수 계산 포함)
   const handleCellClick = useCallback((date: Date, time: string) => {
     const dateStr = toKoreanDateString(date);
-    setAddModalData({ date: dateStr, time });
+    const events = getEventsForDate(date);
+
+    // 클릭한 시간에 겹치는 일정 찾기
+    const clickedMinutes = timeToMinutes(time);
+    const overlappingEvents = events.filter((event) => {
+      const start = timeToMinutes(event.startTime);
+      const end = start + event.duration;
+      return clickedMinutes >= start && clickedMinutes < end;
+    });
+
+    const overlapCount = overlappingEvents.length;
+
+    // 겹치는 일정이 있으면 해당 일정들의 시간 범위 계산
+    const timeRange = overlappingEvents.length > 0
+      ? {
+          start: Math.min(...overlappingEvents.map(e => timeToMinutes(e.startTime))),
+          end: Math.max(...overlappingEvents.map(e => timeToMinutes(e.startTime) + e.duration))
+        }
+      : null;
+
+    setAddModalData({ date: dateStr, time, overlapCount, timeRange, overlappingEvents });
     setShowAddModal(true);
-  }, []);
+  }, [getEventsForDate]);
 
   // 오늘 날짜 (한국 시간)
   const today = getKoreanToday();
@@ -286,6 +336,29 @@ export function WeeklySchedule({
     }
     return `${start.getFullYear()}년 ${startMonth}월 ${start.getDate()}일 - ${endMonth}월 ${end.getDate()}일`;
   }, [weekDays]);
+
+  // 날짜별 마감 블록 (person 속성 없는 블록)
+  const deadlinesByDate = useMemo(() => {
+    const result: Record<string, { block: Block; dday: ReturnType<typeof calculateDday> }[]> = {};
+
+    blocks.forEach((block) => {
+      const dateProp = block.properties.find((p) => p.propertyType === "date");
+      if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.date) return;
+      // person 속성이 있으면 수업이므로 제외
+      if (block.properties.some((p) => p.propertyType === "person")) return;
+
+      const dateStr = dateProp.value.date;
+      if (!result[dateStr]) {
+        result[dateStr] = [];
+      }
+      result[dateStr].push({
+        block,
+        dday: calculateDday(dateStr),
+      });
+    });
+
+    return result;
+  }, [blocks]);
 
   const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -365,6 +438,49 @@ export function WeeklySchedule({
                   >
                     {date.getDate()}
                   </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 마감 행 */}
+          <div className="flex border-b border-border bg-amber-50/50">
+            <div className="w-16 flex-shrink-0 border-r border-border flex items-center justify-end pr-2">
+              <span className="text-xs font-medium text-amber-700">마감</span>
+            </div>
+            {weekDays.map((date) => {
+              const dateStr = toKoreanDateString(date);
+              const deadlines = deadlinesByDate[dateStr] || [];
+              const isToday = dateStr === today;
+
+              return (
+                <div
+                  key={`deadline-${dateStr}`}
+                  className={`flex-1 min-h-[40px] p-1 border-r border-border last:border-r-0 ${
+                    isToday ? "bg-amber-100/50" : ""
+                  }`}
+                >
+                  {deadlines.slice(0, 2).map(({ block, dday }) => (
+                    <div
+                      key={block.id}
+                      onClick={() => onSelectBlock(block.id)}
+                      className={`text-[10px] px-1.5 py-0.5 mb-0.5 rounded cursor-pointer truncate ${
+                        dday.isToday
+                          ? "bg-red-100 text-red-700 font-medium"
+                          : dday.isPast
+                          ? "bg-gray-100 text-gray-500"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                      title={`${block.name || getBlockTitle(block.content, 20)} (${dday.label})`}
+                    >
+                      {block.name || getBlockTitle(block.content, 8)} {dday.label}
+                    </div>
+                  ))}
+                  {deadlines.length > 2 && (
+                    <div className="text-[10px] text-amber-600 px-1">
+                      +{deadlines.length - 2}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -462,10 +578,13 @@ export function WeeklySchedule({
                       ? "#eab308" // 비정규 수업 - 노란색 테두리
                       : color?.border || "#3b82f6";
 
+                    // 과거 날짜인지 확인
+                    const isPast = isPastDate(event.date);
+
                     return (
                       <div
                         key={event.block.id}
-                        className="absolute rounded-md cursor-pointer transition-shadow hover:shadow-md overflow-hidden"
+                        className="absolute rounded-md cursor-pointer transition-shadow hover:shadow-md overflow-hidden group"
                         style={{
                           ...style,
                           backgroundColor: bgColor,
@@ -473,9 +592,28 @@ export function WeeklySchedule({
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSelectBlock(event.block.id);
+                          // 이벤트 블록 클릭해도 모달 열림 (시작 시간은 이벤트 시작 시간)
+                          handleCellClick(date, event.startTime);
                         }}
                       >
+                        {/* 삭제 버튼 - 미래/오늘 수업만 표시 */}
+                        {!isPast && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteLesson(event.block.id, event.block);
+                            }}
+                            className="absolute top-0.5 right-0.5 w-4 h-4
+                                       opacity-0 group-hover:opacity-100
+                                       bg-white/80 rounded-full
+                                       flex items-center justify-center
+                                       text-muted-foreground hover:text-destructive hover:bg-white
+                                       transition-opacity z-10"
+                            aria-label="수업 삭제"
+                          >
+                            ×
+                          </button>
+                        )}
                         <div className="p-1.5 h-full">
                           <div className="flex items-center gap-1">
                             {/* 정규 수업 표시 */}
@@ -483,7 +621,7 @@ export function WeeklySchedule({
                               <span className="text-[10px]" title="정규 수업">↻</span>
                             )}
                             <div
-                              className="text-xs font-medium truncate flex-1"
+                              className="text-xs font-medium truncate flex-1 pr-3"
                               style={{ color: isLesson && !isRegular ? "#854d0e" : color?.text || "#1e40af" }}
                             >
                               {event.studentName ? (event.studentName.length > 15 ? event.studentName.slice(0, 15) + "..." : event.studentName) : getBlockTitle(event.block.content, 15) || "수업"}
@@ -507,15 +645,107 @@ export function WeeklySchedule({
         </div>
       </div>
 
-      {/* 수업 추가 모달 */}
+      {/* 수업 추가/수정 모달 */}
       {showAddModal && addModalData && (
         <AddLessonModal
           date={addModalData.date}
           time={addModalData.time}
+          overlapCount={addModalData.overlapCount}
+          timeRange={addModalData.timeRange}
+          overlappingEvents={addModalData.overlappingEvents}
+          editingEvent={addModalData.editingEvent}
           studentBlocks={studentBlocks}
           settings={settings}
           blocks={blocks}
           onClose={() => {
+            setShowAddModal(false);
+            setAddModalData(null);
+          }}
+          onEditEvent={(event) => {
+            // 수정 모드로 전환
+            setAddModalData({
+              ...addModalData,
+              editingEvent: event,
+              overlappingEvents: undefined,  // 수정 모드에서는 배너 숨김
+            });
+          }}
+          onUpdate={(blockId, studentId, time, duration, isRegular) => {
+            const block = blocks.find(b => b.id === blockId);
+            if (!block) return;
+
+            // 1. 날짜/시간 속성 업데이트
+            const dateProp = block.properties.find(p => p.propertyType === "date");
+            if (dateProp) {
+              onUpdateProperty(blockId, dateProp.id, {
+                type: "date",
+                date: addModalData.date,
+                time: time,
+              });
+            }
+
+            // 2. 학생(person) 속성 업데이트
+            const personProp = block.properties.find(p => p.propertyType === "person");
+            if (personProp) {
+              onUpdateProperty(blockId, personProp.id, {
+                type: "person",
+                blockIds: studentId ? [studentId] : [],
+              });
+            }
+
+            // 3. 학생 이름으로 블록 이름 업데이트
+            if (studentId) {
+              const studentBlock = studentBlocks.find(b => b.id === studentId);
+              if (studentBlock) {
+                const studentName = getBlockDisplayName(studentBlock);
+                onUpdateBlockName(blockId, studentName);
+              }
+            }
+
+            // 4. 수업시간(duration) 업데이트
+            const durationProp = block.properties.find(p => p.propertyType === "duration");
+            if (durationProp) {
+              onUpdateProperty(blockId, durationProp.id, {
+                type: "duration",
+                minutes: duration,
+              });
+            } else if (studentId) {
+              // duration 속성이 없는 경우 학생 기본값과 다르면 추가
+              const studentBlock = blocks.find(b => b.id === studentId);
+              const studentDuration = studentBlock?.properties.find(p => p.propertyType === "duration");
+              const studentDurationValue = studentDuration?.value.type === "duration" ? studentDuration.value.minutes : settings.defaultDuration;
+              if (duration !== studentDurationValue) {
+                onAddProperty(blockId, "duration", undefined, {
+                  type: "duration",
+                  minutes: duration,
+                });
+              }
+            }
+
+            // 5. 반복(repeat) 업데이트
+            const repeatProp = block.properties.find(p => p.propertyType === "repeat");
+            if (isRegular) {
+              const lessonDate = new Date(addModalData.date);
+              const repeatValue = {
+                type: "repeat" as const,
+                config: {
+                  type: "weekly" as const,
+                  interval: 1,
+                  weekdays: [lessonDate.getDay()],
+                },
+              };
+              if (repeatProp) {
+                onUpdateProperty(blockId, repeatProp.id, repeatValue);
+              } else {
+                onAddProperty(blockId, "repeat", undefined, repeatValue);
+              }
+            } else if (repeatProp) {
+              // 비정규로 변경 시 repeat 속성 제거 (null로 설정)
+              onUpdateProperty(blockId, repeatProp.id, {
+                type: "repeat",
+                config: null,
+              });
+            }
+
             setShowAddModal(false);
             setAddModalData(null);
           }}
@@ -585,28 +815,82 @@ function timeToMinutes(time: string): number {
   return hours * 60 + minutes;
 }
 
-// 수업 추가 모달
+// 수업 추가/수정 모달
 function AddLessonModal({
   date,
   time,
+  overlapCount,
+  timeRange,
+  overlappingEvents,
+  editingEvent,
   studentBlocks,
   settings,
   blocks,
   onClose,
+  onEditEvent,
+  onUpdate,
   onAdd,
 }: {
   date: string;
   time: string;
+  overlapCount?: number;
+  timeRange?: { start: number; end: number } | null;
+  overlappingEvents?: ScheduleEvent[];
+  editingEvent?: ScheduleEvent;
   studentBlocks: Block[];
   settings: ScheduleSettings;
   blocks: Block[];
   onClose: () => void;
+  onEditEvent: (event: ScheduleEvent) => void;
+  onUpdate: (blockId: string, studentId: string, time: string, duration: number, isRegular: boolean) => void;
   onAdd: (studentId: string, time: string, duration: number, isRegular: boolean) => void;
 }) {
-  const [selectedStudent, setSelectedStudent] = useState("");
-  const [startTime, setStartTime] = useState(time);
-  const [duration, setDuration] = useState(settings.defaultDuration);
-  const [isRegular, setIsRegular] = useState(true); // 기본값: 정규 수업
+  const isEditMode = !!editingEvent;
+
+  // 수정 모드: 기존 값에서 학생 ID 추출
+  const getInitialStudentId = () => {
+    if (!editingEvent) return "";
+    const personProp = editingEvent.block.properties.find(p => p.propertyType === "person");
+    if (personProp?.value.type === "person" && personProp.value.blockIds.length > 0) {
+      return personProp.value.blockIds[0];
+    }
+    return "";
+  };
+
+  // 수정 모드: 기존 반복 여부 확인
+  const getInitialIsRegular = () => {
+    if (!editingEvent) return true;
+    const repeatProp = editingEvent.block.properties.find(p => p.propertyType === "repeat");
+    return repeatProp?.value.type === "repeat" && repeatProp.value.config !== null;
+  };
+
+  const [selectedStudent, setSelectedStudent] = useState(getInitialStudentId);
+  const [startTime, setStartTime] = useState(isEditMode ? editingEvent.startTime : time);
+  const [duration, setDuration] = useState(isEditMode ? editingEvent.duration : settings.defaultDuration);
+  const [isRegular, setIsRegular] = useState(getInitialIsRegular);
+
+  // editingEvent가 변경될 때 state 업데이트 (수정 모드 전환 시)
+  useEffect(() => {
+    if (editingEvent) {
+      setSelectedStudent(getInitialStudentId());
+      setStartTime(editingEvent.startTime);
+      setDuration(editingEvent.duration);
+      setIsRegular(getInitialIsRegular());
+    }
+  }, [editingEvent]);
+
+  // timeRange가 있으면 10분 단위 옵션 생성
+  const timeOptions = useMemo(() => {
+    if (!timeRange) return null;
+
+    const options: string[] = [];
+    for (let m = timeRange.start; m < timeRange.end; m += 10) {
+      const h = Math.floor(m / 60);
+      const min = m % 60;
+      options.push(`${h.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`);
+    }
+    return options;
+  }, [timeRange]);
 
   // 학생 선택 시 해당 학생의 기본 수업 시간으로 설정
   const handleStudentChange = (studentId: string) => {
@@ -634,7 +918,35 @@ function AddLessonModal({
         className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-lg mb-4">수업 추가</h3>
+        <h3 className="font-semibold text-lg mb-4">
+          {isEditMode ? "수업 수정" : "수업 추가"}
+        </h3>
+
+        {/* 시간 충돌 경고 배너 - 기존 일정 클릭 시 수정 모드로 전환 */}
+        {!isEditMode && overlappingEvents && overlappingEvents.length > 0 && (
+          <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="text-sm text-amber-800 mb-2">
+              이 시간에 {overlappingEvents.length}개 일정이 있습니다
+            </div>
+            <div className="space-y-1">
+              {overlappingEvents.map((event) => {
+                const endMinutes = timeToMinutes(event.startTime) + event.duration;
+                const endHour = Math.floor(endMinutes / 60);
+                const endMin = endMinutes % 60;
+                const endTime = `${endHour.toString().padStart(2, "0")}:${endMin.toString().padStart(2, "0")}`;
+                return (
+                  <button
+                    key={event.block.id}
+                    onClick={() => onEditEvent(event)}
+                    className="w-full text-left px-2 py-1.5 rounded hover:bg-amber-100 text-sm text-amber-900 transition-colors"
+                  >
+                    {event.studentName || getBlockTitle(event.block.content, 10) || "일정"} {event.startTime}~{endTime}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           {/* 날짜 (읽기 전용) */}
@@ -671,12 +983,33 @@ function AddLessonModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               시작 시간
             </label>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+            {timeOptions ? (
+              // 겹치는 일정 있음 → 버튼 그룹
+              <div className="flex gap-2 flex-wrap">
+                {timeOptions.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setStartTime(t)}
+                    className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                      startTime === t
+                        ? "bg-primary text-white border-primary"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              // 빈 시간 → 기존 time input
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            )}
           </div>
 
           {/* 수업 시간 */}
@@ -721,11 +1054,17 @@ function AddLessonModal({
             취소
           </button>
           <button
-            onClick={() => onAdd(selectedStudent, startTime, duration, isRegular)}
+            onClick={() => {
+              if (isEditMode && editingEvent) {
+                onUpdate(editingEvent.block.id, selectedStudent, startTime, duration, isRegular);
+              } else {
+                onAdd(selectedStudent, startTime, duration, isRegular);
+              }
+            }}
             disabled={!selectedStudent}
             className="flex-1 px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            추가
+            {isEditMode ? "저장" : "추가"}
           </button>
         </div>
       </div>

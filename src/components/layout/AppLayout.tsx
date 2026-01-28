@@ -13,7 +13,7 @@ import { useCustomViews } from "@/hooks/useCustomViews";
 import { useView, filterBlocksByView } from "@/hooks/useView";
 import { VIEW_LABELS } from "@/types/view";
 import { DEFAULT_PROPERTIES } from "@/types/property";
-import { getKoreanToday } from "@/lib/dateFormat";
+import { getKoreanToday, getKoreanNow, toKoreanDateString } from "@/lib/dateFormat";
 
 export function AppLayout() {
   const {
@@ -61,7 +61,13 @@ export function AppLayout() {
   const { tags, createTag, getTagsByIds } = useTags();
   const { blockTypes, createBlockType, deleteBlockType } = useBlockTypes();
   const { customViews, createView, deleteView } = useCustomViews();
-  const { view, changeView, selectDate, selectCustomView } = useView();
+  const { view, changeView: changeViewOriginal, selectDate, selectCustomView } = useView();
+
+  // 뷰 전환 시 NoteView 자동 닫기
+  const changeView = useCallback((...args: Parameters<typeof changeViewOriginal>) => {
+    setNoteViewBlockId(null);
+    changeViewOriginal(...args);
+  }, [changeViewOriginal]);
   const { settings } = useSettings();
 
   const [showSearch, setShowSearch] = useState(false);
@@ -178,7 +184,35 @@ export function AppLayout() {
     };
   }, [blocks]);
 
-  // 학생 목록 (contact 속성이 있는 블록)
+  // 이번 주 범위 계산 (월요일 ~ 일요일)
+  const getWeekRange = useCallback(() => {
+    const now = getKoreanNow();
+    const day = now.getDay();
+    // 일요일(0)이면 -6, 아니면 1 - day
+    const diff = day === 0 ? -6 : 1 - day;
+
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() + diff);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    return { weekStart, weekEnd };
+  }, []);
+
+  // 특정 요일의 이번 주 날짜 구하기 (0: 일요일 ~ 6: 토요일)
+  const getDateForWeekday = useCallback((weekStart: Date, weekday: number) => {
+    const result = new Date(weekStart);
+    // weekStart는 월요일(1)이므로, weekday와의 차이 계산
+    // 월요일(1)=0, 화요일(2)=1, ..., 일요일(0)=6
+    const dayOffset = weekday === 0 ? 6 : weekday - 1;
+    result.setDate(weekStart.getDate() + dayOffset);
+    return result;
+  }, []);
+
+  // 학생 목록 (contact 속성이 있는 블록) + 주간 수업 수
   const students = useMemo(() => {
     const getPlainText = (html: string) => {
       if (typeof window === "undefined") return html;
@@ -187,13 +221,71 @@ export function AppLayout() {
       return div.textContent || div.innerText || "";
     };
 
-    return blocks
-      .filter((b) => b.properties.some((p) => p.propertyType === "contact"))
-      .map((b) => ({
-        id: b.id,
-        name: b.name || getPlainText(b.content) || "이름 없음",
-      }));
-  }, [blocks]);
+    const { weekStart, weekEnd } = getWeekRange();
+    const weekStartStr = toKoreanDateString(weekStart);
+    const weekEndStr = toKoreanDateString(weekEnd);
+
+    // 학생 블록 목록
+    const studentBlocks = blocks.filter((b) =>
+      b.properties.some((p) => p.propertyType === "contact")
+    );
+
+    // 수업 블록 목록 (person + date 속성이 있는 블록)
+    const lessonBlocks = blocks.filter((b) =>
+      b.properties.some((p) => p.propertyType === "person") &&
+      b.properties.some((p) => p.propertyType === "date")
+    );
+
+    return studentBlocks.map((studentBlock) => {
+      // 이 학생의 주간 수업 수 계산
+      let lessonCount = 0;
+
+      lessonBlocks.forEach((lesson) => {
+        const personProp = lesson.properties.find((p) => p.propertyType === "person");
+        const dateProp = lesson.properties.find((p) => p.propertyType === "date");
+        const repeatProp = lesson.properties.find((p) => p.propertyType === "repeat");
+
+        if (!personProp || !dateProp) return;
+        if (personProp.value?.type !== "person") return;
+        if (dateProp.value?.type !== "date") return;
+
+        // 이 학생과 연결된 수업인지 확인
+        const linkedBlockIds = personProp.value.blockIds || [];
+        const isLinked = linkedBlockIds.includes(studentBlock.id);
+        if (!isLinked) return;
+
+        const dateValue = dateProp.value.date;
+        if (!dateValue) return;
+
+        const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
+
+        if (!repeatConfig) {
+          // 비정규 수업: 날짜가 이번 주 범위 내면 +1
+          if (dateValue >= weekStartStr && dateValue <= weekEndStr) {
+            lessonCount++;
+          }
+        } else if (repeatConfig.type === "weekly") {
+          // 정규 수업: 해당 요일이 이번 주에 있으면 +1
+          const weekdays = repeatConfig.weekdays || [];
+          weekdays.forEach((day: number) => {
+            // 이번 주 해당 요일의 날짜
+            const targetDate = getDateForWeekday(weekStart, day);
+            const targetDateStr = toKoreanDateString(targetDate);
+            // 원본 날짜 이후인 경우에만 카운트
+            if (targetDateStr >= dateValue) {
+              lessonCount++;
+            }
+          });
+        }
+      });
+
+      return {
+        id: studentBlock.id,
+        name: studentBlock.name || getPlainText(studentBlock.content) || "이름 없음",
+        weeklyLessonCount: lessonCount,
+      };
+    });
+  }, [blocks, getWeekRange, getDateForWeekday]);
 
   // 학생 선택 핸들러
   const handleSelectStudent = useCallback(

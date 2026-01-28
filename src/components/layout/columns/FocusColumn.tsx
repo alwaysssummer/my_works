@@ -11,7 +11,7 @@ import { getKoreanToday } from "@/lib/dateFormat";
 interface FocusColumnProps {
   blocks: Block[];
   allTags: Tag[];
-  onAddBlock: () => string;
+  onAddBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   onUpdateBlock: (id: string, content: string) => void;
   onOpenDetail: (id: string) => void;
   onAddProperty?: (blockId: string, propertyType: PropertyType, name?: string, initialValue?: any) => void;
