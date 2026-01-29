@@ -214,16 +214,80 @@ export function WeeklySchedule({
     [blocks, settings.defaultDuration]
   );
 
-  // 이벤트 위치 및 크기 계산 (10분당 약 13.33px, 30분당 40px 유지)
+  // Google Calendar 스타일 열 배치 알고리즘
+  const calculateEventLayout = useCallback((events: ScheduleEvent[]) => {
+    if (events.length === 0) return new Map<string, { column: number; totalColumns: number }>();
+
+    // 시작 시간순 정렬
+    const sortedEvents = [...events].sort((a, b) => {
+      const aStart = timeToMinutes(a.startTime);
+      const bStart = timeToMinutes(b.startTime);
+      if (aStart !== bStart) return aStart - bStart;
+      // 시작 시간이 같으면 긴 일정을 먼저
+      return b.duration - a.duration;
+    });
+
+    // 각 이벤트의 열 위치 저장
+    const eventColumns = new Map<string, number>();
+    // 각 열의 끝 시간 추적
+    const columnEnds: number[] = [];
+
+    sortedEvents.forEach((event) => {
+      const start = timeToMinutes(event.startTime);
+      const end = start + event.duration;
+
+      // 사용 가능한 가장 왼쪽 열 찾기
+      let column = 0;
+      while (column < columnEnds.length && columnEnds[column] > start) {
+        column++;
+      }
+
+      // 열 할당
+      eventColumns.set(event.block.id, column);
+      columnEnds[column] = end;
+    });
+
+    // 각 이벤트가 속한 그룹의 최대 열 수 계산
+    const result = new Map<string, { column: number; totalColumns: number }>();
+
+    sortedEvents.forEach((event) => {
+      const eventStart = timeToMinutes(event.startTime);
+      const eventEnd = eventStart + event.duration;
+      const column = eventColumns.get(event.block.id) || 0;
+
+      // 이 이벤트와 겹치는 모든 이벤트 찾기
+      let maxColumn = column;
+      sortedEvents.forEach((other) => {
+        const otherStart = timeToMinutes(other.startTime);
+        const otherEnd = otherStart + other.duration;
+        // 겹치는지 확인
+        if (otherStart < eventEnd && otherEnd > eventStart) {
+          const otherColumn = eventColumns.get(other.block.id) || 0;
+          maxColumn = Math.max(maxColumn, otherColumn);
+        }
+      });
+
+      result.set(event.block.id, {
+        column,
+        totalColumns: maxColumn + 1,
+      });
+    });
+
+    return result;
+  }, []);
+
+  // 이벤트 위치 및 크기 계산 (Google Calendar 스타일)
   const getEventStyle = useCallback(
-    (event: ScheduleEvent, overlapIndex: number, overlapCount: number) => {
+    (event: ScheduleEvent, layout: { column: number; totalColumns: number }) => {
       const [hours, minutes] = event.startTime.split(":").map(Number);
       const startMinutes = (hours - settings.startHour) * 60 + minutes;
       const slotHeight = 40 / 3; // 10분당 약 13.33px (30분당 40px 유지)
       const top = (startMinutes / 10) * slotHeight;
-      const height = (event.duration / 10) * slotHeight;
-      const width = 100 / overlapCount;
-      const left = width * overlapIndex;
+      const height = Math.max((event.duration / 10) * slotHeight, 20); // 최소 높이 20px
+
+      const { column, totalColumns } = layout;
+      const width = 100 / totalColumns;
+      const left = width * column;
 
       return {
         top: `${top}px`,
@@ -235,7 +299,7 @@ export function WeeklySchedule({
     [settings.startHour]
   );
 
-  // 겹치는 이벤트 계산
+  // 겹치는 이벤트 계산 (모달용)
   const getOverlapInfo = useCallback((events: ScheduleEvent[], targetEvent: ScheduleEvent) => {
     const targetStart = timeToMinutes(targetEvent.startTime);
     const targetEnd = targetStart + targetEvent.duration;
@@ -527,6 +591,8 @@ export function WeeklySchedule({
               const dateStr = toKoreanDateString(date);
               const isToday = dateStr === today;
               const events = getEventsForDate(date);
+              // Google Calendar 스타일 레이아웃 계산
+              const eventLayout = calculateEventLayout(events);
 
               return (
                 <div
@@ -563,10 +629,10 @@ export function WeeklySchedule({
                     </div>
                   )}
 
-                  {/* 이벤트 블록 */}
+                  {/* 이벤트 블록 (Google Calendar 스타일) */}
                   {events.map((event) => {
-                    const { index, count } = getOverlapInfo(events, event);
-                    const style = getEventStyle(event, index, count);
+                    const layout = eventLayout.get(event.block.id) || { column: 0, totalColumns: 1 };
+                    const style = getEventStyle(event, layout);
                     const personProp = event.block.properties.find((p) => p.propertyType === "person");
                     const studentId = personProp?.value.type === "person" ? personProp.value.blockIds[0] : null;
 
@@ -622,26 +688,25 @@ export function WeeklySchedule({
                             ×
                           </button>
                         )}
-                        <div className="p-1.5 h-full">
-                          <div className="flex items-center gap-1">
-                            {/* 정규 수업 표시 */}
-                            {isLesson && isRegular && (
-                              <span className="text-[10px]" title="정규 수업">↻</span>
-                            )}
+                        <div className="p-1 h-full flex flex-col overflow-hidden">
+                          {/* 학생 이름 - 항상 표시 */}
+                          <div
+                            className="text-xs font-medium truncate leading-tight"
+                            style={{ color: color.text }}
+                            title={event.studentName || getBlockTitle(event.block.content, 30) || "수업"}
+                          >
+                            {isLesson && isRegular && <span className="mr-0.5" title="정규 수업">↻</span>}
+                            {event.studentName || getBlockTitle(event.block.content, 10) || "수업"}
+                          </div>
+                          {/* 시간 - 공간 있을 때만 표시 */}
+                          {event.duration >= 30 && (
                             <div
-                              className="text-xs font-medium truncate flex-1 pr-3"
+                              className="text-[10px] opacity-70 truncate"
                               style={{ color: color.text }}
                             >
-                              {event.studentName ? (event.studentName.length > 15 ? event.studentName.slice(0, 15) + "..." : event.studentName) : getBlockTitle(event.block.content, 15) || "수업"}
+                              {event.startTime}
                             </div>
-                          </div>
-                          <div
-                            className="text-[10px] opacity-75"
-                            style={{ color: color.text }}
-                          >
-                            {event.startTime}
-                            {isSpecialEvent && isLesson && " (비정규)"}
-                          </div>
+                          )}
                         </div>
                       </div>
                     );
