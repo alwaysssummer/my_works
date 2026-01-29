@@ -133,13 +133,10 @@ export function useBlocks() {
       const yesterdayStr = toKoreanDateString(todayDate);
 
       setTop3History((prev) => {
+        // 이미 어제 날짜의 기록이 있으면 중복 추가하지 않음
         const existing = prev.find((h) => h.date === yesterdayStr);
         if (existing) {
-          return prev.map((h) =>
-            h.date === yesterdayStr
-              ? { ...h, blocks: [...h.blocks, ...expiredTop3] }
-              : h
-          );
+          return prev;
         }
         return [...prev, { date: yesterdayStr, blocks: expiredTop3 }];
       });
@@ -155,11 +152,24 @@ export function useBlocks() {
     isInitializedRef.current = true;
 
     async function loadData() {
-      // TOP 3 히스토리 로드
+      // TOP 3 히스토리 로드 (중복 제거)
       const savedHistory = localStorage.getItem(TOP3_HISTORY_KEY);
       if (savedHistory) {
         try {
-          setTop3History(JSON.parse(savedHistory));
+          const parsed: Top3History[] = JSON.parse(savedHistory);
+          // 각 날짜별 블록에서 중복 제거 (id 기준)
+          const deduplicated = parsed.map((history) => ({
+            ...history,
+            blocks: history.blocks.filter(
+              (block, index, self) =>
+                index === self.findIndex((b) => b.id === block.id)
+            ),
+          }));
+          setTop3History(deduplicated);
+          // 중복이 제거되었으면 localStorage 업데이트
+          if (JSON.stringify(parsed) !== JSON.stringify(deduplicated)) {
+            localStorage.setItem(TOP3_HISTORY_KEY, JSON.stringify(deduplicated));
+          }
         } catch {
           setTop3History([]);
         }

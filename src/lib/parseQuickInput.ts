@@ -14,6 +14,7 @@ export interface ParsedInput {
   tags: string[];       // 추출된 태그 이름들
   date: string | null;  // ISO 형식 날짜 (YYYY-MM-DD)
   hasCheckbox: boolean; // 체크박스 추가 여부
+  priority: "high" | "medium" | "low" | null; // 우선순위
 }
 
 // 날짜 키워드와 계산 함수 (한국 시간)
@@ -55,6 +56,7 @@ export function parseQuickInput(text: string): ParsedInput {
   const tags: string[] = [];
   let date: string | null = null;
   let hasCheckbox = false;
+  let priority: "high" | "medium" | "low" | null = null;
 
   // 1. 체크박스 인식 ([] 또는 /할일)
   // [] 패턴 - 문자열 시작에서만
@@ -97,7 +99,27 @@ export function parseQuickInput(text: string): ParsedInput {
   // 태그 구문 제거
   content = content.replace(tagRegex, "").trim();
 
-  // 4. 연속된 공백 정리
+  // 4. 우선순위 인식 (!!!, !!, !)
+  // 문자열 끝이나 공백 앞의 느낌표 연속
+  if (/\s!!!(\s|$)/.test(content) || content.endsWith("!!!")) {
+    priority = "high";
+    content = content.replace(/\s*!!!\s*/g, " ").trim();
+  } else if (/\s!!(\s|$)/.test(content) || content.endsWith("!!")) {
+    priority = "medium";
+    content = content.replace(/\s*!!\s*/g, " ").trim();
+  } else if (/\s!(\s|$)/.test(content) || content.endsWith("!")) {
+    // 단독 !만 (문장 끝 느낌표와 구분)
+    const singleBang = /\s!(\s|$)/;
+    if (singleBang.test(content) || (content.endsWith("!") && content.length > 1 && content[content.length - 2] === " ")) {
+      priority = "low";
+      content = content.replace(/\s+!(\s|$)/g, " ").trim();
+      if (content.endsWith(" !")) {
+        content = content.slice(0, -2).trim();
+      }
+    }
+  }
+
+  // 5. 연속된 공백 정리
   content = content.replace(/\s+/g, " ").trim();
 
   return {
@@ -105,6 +127,7 @@ export function parseQuickInput(text: string): ParsedInput {
     tags,
     date,
     hasCheckbox,
+    priority,
   };
 }
 
@@ -112,5 +135,5 @@ export function parseQuickInput(text: string): ParsedInput {
  * 파싱 결과가 속성을 가지고 있는지 확인
  */
 export function hasQuickProperties(parsed: ParsedInput): boolean {
-  return parsed.tags.length > 0 || parsed.date !== null || parsed.hasCheckbox;
+  return parsed.tags.length > 0 || parsed.date !== null || parsed.hasCheckbox || parsed.priority !== null;
 }

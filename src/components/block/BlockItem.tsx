@@ -14,6 +14,14 @@ import { BlockType } from "@/types/blockType";
 import { SlashMenu } from "./SlashMenu";
 import { saveImage, getImage } from "@/lib/imageStorage";
 import { parseBlockContent } from "@/lib/blockParser";
+import {
+  getPropertyByType,
+  getCheckboxValue,
+  getDateValue,
+  getTagIds,
+  getPriorityLevel,
+  getRepeatConfig,
+} from "@/lib/propertyHelpers";
 
 interface BlockItemProps {
   block: Block;
@@ -86,31 +94,27 @@ export function BlockItem({
   const [slashQuery, setSlashQuery] = useState("");
   const [slashPosition, setSlashPosition] = useState({ top: 0, left: 0 });
 
-  // 체크박스 속성 찾기
-  const checkboxProperty = block.properties.find((p) => p.propertyType === "checkbox");
+  // 속성 추출 (헬퍼 함수 사용)
+  const checkboxProperty = getPropertyByType(block, "checkbox");
   const hasCheckbox = !!checkboxProperty;
-  const isChecked = checkboxProperty?.value.type === "checkbox" && checkboxProperty.value.checked;
+  const isChecked = getCheckboxValue(block);
 
-  // 날짜 속성 찾기
-  const dateProperty = block.properties.find((p) => p.propertyType === "date");
+  const dateProperty = getPropertyByType(block, "date");
   const hasDate = !!dateProperty;
-  const dateValue = dateProperty?.value.type === "date" ? dateProperty.value.date : "";
+  const dateValue = getDateValue(block);
 
-  // 태그 속성 찾기
-  const tagProperty = block.properties.find((p) => p.propertyType === "tag");
+  const tagProperty = getPropertyByType(block, "tag");
   const hasTag = !!tagProperty;
-  const tagIds = tagProperty?.value.type === "tag" ? tagProperty.value.tagIds : [];
+  const tagIds = getTagIds(block);
   const blockTags = allTags.filter((tag) => tagIds.includes(tag.id));
 
-  // 우선순위 속성 찾기
-  const priorityProperty = block.properties.find((p) => p.propertyType === "priority");
+  const priorityProperty = getPropertyByType(block, "priority");
   const hasPriority = !!priorityProperty;
-  const priorityLevel: PriorityLevel = priorityProperty?.value.type === "priority" ? priorityProperty.value.level : "none";
+  const priorityLevel = getPriorityLevel(block);
 
-  // 반복 속성 찾기
-  const repeatProperty = block.properties.find((p) => p.propertyType === "repeat");
+  const repeatProperty = getPropertyByType(block, "repeat");
   const hasRepeat = !!repeatProperty;
-  const repeatConfig: RepeatConfig | null = repeatProperty?.value.type === "repeat" ? repeatProperty.value.config : null;
+  const repeatConfig = getRepeatConfig(block);
 
   // 블록 파싱 (카테고리 아이콘 표시용)
   const parsedBlock = parseBlockContent(block.content);

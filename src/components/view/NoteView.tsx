@@ -13,6 +13,22 @@ import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES } from "@/types/pr
 import { BlockType } from "@/types/blockType";
 import { saveImage, getImage } from "@/lib/imageStorage";
 import { formatRelativeDate, getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
+import {
+  getPropertyByType,
+  hasPropertyType,
+  getCheckboxValue,
+  getDateValue,
+  getTagIds,
+  getPriorityLevel,
+  getRepeatConfig,
+  getContactInfo,
+  getMemoText,
+  getPersonBlockIds,
+  getUrgentSlot,
+  getDurationMinutes,
+  isStudentBlock as checkIsStudentBlock,
+} from "@/lib/propertyHelpers";
+import { findBacklinksTo, BacklinkRelation } from "@/lib/backlinkParser";
 
 interface NoteViewProps {
   block: Block;
@@ -84,34 +100,8 @@ export function NoteView({
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
 
-  // 학생 블록 여부 판단 (contact 속성 존재)
-  const isStudentBlock = useMemo(() =>
-    block.properties.some(p => p.propertyType === "contact"),
-    [block.properties]
-  );
-
-  // 현재 블록의 인덱스 및 이전/다음 블록 계산
-  const currentIndex = useMemo(() =>
-    contextBlocks.findIndex((b) => b.id === block.id),
-    [contextBlocks, block.id]
-  );
-  const prevBlock = currentIndex > 0 ? contextBlocks[currentIndex - 1] : null;
-  const nextBlock = currentIndex < contextBlocks.length - 1 ? contextBlocks[currentIndex + 1] : null;
-  const hasNavigation = contextBlocks.length > 1;
-
-  // 이전 블록으로 이동
-  const handlePrevBlock = useCallback(() => {
-    if (prevBlock && onNavigate) {
-      onNavigate(prevBlock.id);
-    }
-  }, [prevBlock, onNavigate]);
-
-  // 다음 블록으로 이동
-  const handleNextBlock = useCallback(() => {
-    if (nextBlock && onNavigate) {
-      onNavigate(nextBlock.id);
-    }
-  }, [nextBlock, onNavigate]);
+  // 학생 블록 여부 판단 (헬퍼 함수 사용)
+  const isStudentBlock = useMemo(() => checkIsStudentBlock(block), [block]);
 
   // 삭제 핸들러 (확인 포함)
   const handleDelete = useCallback(() => {
@@ -131,69 +121,54 @@ export function NoteView({
   const tomorrow = (() => { const d = getKoreanNow(); d.setDate(d.getDate() + 1); return toKoreanDateString(d); })();
   const nextWeek = (() => { const d = getKoreanNow(); d.setDate(d.getDate() + 7); return toKoreanDateString(d); })();
 
-  // 속성 타입으로 속성 찾기
-  const getPropertyByType = useCallback(
-    (propertyType: PropertyType) => {
-      return block.properties.find((p) => p.propertyType === propertyType);
-    },
-    [block.properties]
-  );
+  // 속성 추출 (헬퍼 함수 사용)
+  const checkboxProp = getPropertyByType(block, "checkbox");
+  const isChecked = getCheckboxValue(block);
 
-  // 속성 타입 존재 여부
-  const hasPropertyType = useCallback(
-    (propertyType: PropertyType) => {
-      return block.properties.some((p) => p.propertyType === propertyType);
-    },
-    [block.properties]
-  );
+  const dateProp = getPropertyByType(block, "date");
+  const dateStr = getDateValue(block);
 
-  // 체크박스
-  const checkboxProp = getPropertyByType("checkbox");
-  const isChecked = checkboxProp?.value?.type === "checkbox" && checkboxProp.value.checked;
+  const priorityProp = getPropertyByType(block, "priority");
+  const priority = getPriorityLevel(block);
 
-  // 날짜
-  const dateProp = getPropertyByType("date");
-  const dateStr = dateProp?.value?.type === "date" ? dateProp.value.date : "";
-
-  // 우선순위
-  const priorityProp = getPropertyByType("priority");
-  const priority: PriorityLevel = priorityProp?.value?.type === "priority" ? priorityProp.value.level : "none";
-
-  // 태그
-  const tagProp = getPropertyByType("tag");
-  const tagIds: string[] = tagProp?.value?.type === "tag" ? tagProp.value.tagIds : [];
+  const tagProp = getPropertyByType(block, "tag");
+  const tagIds = getTagIds(block);
   const blockTags = tagIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean);
 
-  // 메모
-  const memoProp = getPropertyByType("memo");
-  const memoText = memoProp?.value?.type === "memo" ? memoProp.value.text : "";
+  const memoProp = getPropertyByType(block, "memo");
+  const memoText = getMemoText(block);
 
-  // 연락처
-  const contactProp = getPropertyByType("contact");
-  const contactPhone = contactProp?.value?.type === "contact" ? contactProp.value.phone || "" : "";
-  const contactEmail = contactProp?.value?.type === "contact" ? contactProp.value.email || "" : "";
+  const contactProp = getPropertyByType(block, "contact");
+  const { phone: contactPhone, email: contactEmail } = getContactInfo(block);
 
-  // 반복
-  const repeatProp = getPropertyByType("repeat");
-  const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
+  const repeatProp = getPropertyByType(block, "repeat");
+  const repeatConfig = getRepeatConfig(block);
   const repeatType = repeatConfig?.type || "none";
   const repeatWeekdays = repeatConfig?.weekdays || [];
 
-  // 사람 연결
-  const personProp = getPropertyByType("person");
-  const personBlockIds = personProp?.value?.type === "person" ? personProp.value.blockIds || [] : [];
+  const personProp = getPropertyByType(block, "person");
+  const personBlockIds = getPersonBlockIds(block);
   const linkedPersons = personBlockIds.map(id => contextBlocks.find(b => b.id === id)).filter(Boolean);
 
-  // 긴급
-  const urgentProp = getPropertyByType("urgent");
-  const urgentSlot = urgentProp?.value?.type === "urgent" ? urgentProp.value.slotIndex : undefined;
+  const urgentProp = getPropertyByType(block, "urgent");
+  const urgentSlot = getUrgentSlot(block);
 
-  // 수업 시간
-  const durationProp = getPropertyByType("duration");
-  const durationMinutes = durationProp?.value?.type === "duration" ? durationProp.value.minutes : 0;
+  const durationProp = getPropertyByType(block, "duration");
+  const durationMinutes = getDurationMinutes(block);
 
   // 속성 개수
   const propertyCount = block.properties.length;
+
+  // 백링크 (이 블록을 참조하는 블록들)
+  const backlinks = useMemo(() => {
+    return findBacklinksTo(block.id, contextBlocks);
+  }, [block.id, contextBlocks]);
+
+  const backlinkBlocks = useMemo(() => {
+    return backlinks
+      .map((link) => contextBlocks.find((b) => b.id === link.sourceBlockId))
+      .filter((b): b is Block => b !== undefined);
+  }, [backlinks, contextBlocks]);
 
   // Tiptap 에디터 설정 (Typora 스타일)
   const editor = useEditor({
@@ -270,7 +245,7 @@ export function NoteView({
     }
   }, [block.content, editor]);
 
-  // 키보드 단축키 (ESC 닫기, Alt+←/→ 이동, Ctrl+Backspace 삭제)
+  // 키보드 단축키 (ESC 닫기, Ctrl+Backspace 삭제)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // ESC: 닫기
@@ -286,20 +261,6 @@ export function NoteView({
         return;
       }
 
-      // Alt+← 또는 Ctrl+[: 이전 블록
-      if ((e.altKey && e.key === "ArrowLeft") || (e.ctrlKey && e.key === "[")) {
-        e.preventDefault();
-        handlePrevBlock();
-        return;
-      }
-
-      // Alt+→ 또는 Ctrl+]: 다음 블록
-      if ((e.altKey && e.key === "ArrowRight") || (e.ctrlKey && e.key === "]")) {
-        e.preventDefault();
-        handleNextBlock();
-        return;
-      }
-
       // Ctrl+Backspace: 삭제
       if (e.ctrlKey && e.key === "Backspace") {
         e.preventDefault();
@@ -309,7 +270,7 @@ export function NoteView({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, handlePrevBlock, handleNextBlock, handleDelete]);
+  }, [onClose, handleDelete]);
 
   // 블록 이름 저장
   const handleSaveBlockName = useCallback(() => {
@@ -499,57 +460,40 @@ export function NoteView({
   const allPropertyTypes = DEFAULT_PROPERTIES;
 
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-60 z-50 bg-background flex flex-col">
-      {/* 클릭 외부 닫기 핸들러 */}
-      {showAddProperty && (
-        <div
-          className="fixed inset-0 z-[99]"
-          onClick={() => setShowAddProperty(false)}
-        />
-      )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* 어두운 오버레이 (클릭 시 닫힘) */}
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
 
-      {/* 상단 바 - 간소화 */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative z-10">
-        {/* 왼쪽: 이전/다음 버튼 */}
-        <div className="flex items-center gap-2">
-          {/* 이전/다음 이동 버튼 */}
-          {hasNavigation && (
-            <nav className="flex items-center gap-1 ml-4 border-l border-border pl-4" aria-label="블록 탐색">
-              <button
-                onClick={handlePrevBlock}
-                disabled={!prevBlock}
-                aria-label="이전 블록 (Alt+←)"
-                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="text-sm" aria-hidden="true">◀</span>
-              </button>
-              <span className="text-xs text-muted-foreground px-1" aria-live="polite">
-                {currentIndex + 1} / {contextBlocks.length}
-              </span>
-              <button
-                onClick={handleNextBlock}
-                disabled={!nextBlock}
-                aria-label="다음 블록 (Alt+→)"
-                className="p-1.5 rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="text-sm" aria-hidden="true">▶</span>
-              </button>
-            </nav>
-          )}
-        </div>
+      {/* 모달 콘텐츠 */}
+      <div className="relative z-10 bg-background rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] mx-4 overflow-hidden flex flex-col">
+        {/* 클릭 외부 닫기 핸들러 (속성 추가 메뉴용) */}
+        {showAddProperty && (
+          <div
+            className="fixed inset-0 z-[99]"
+            onClick={() => setShowAddProperty(false)}
+          />
+        )}
 
-        {/* 오른쪽: 삭제만 */}
-        <button
-          onClick={handleDelete}
-          aria-label="블록 삭제 (Ctrl+Backspace)"
-          className="text-sm text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span aria-hidden="true">✕</span>
-        </button>
-      </header>
+        {/* 상단 바 - 간소화 */}
+        <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-background relative z-10">
+          {/* 왼쪽: 빈 영역 */}
+          <div />
 
-      {/* 메인 콘텐츠 - 스크롤 가능 */}
-      <main className="flex-1 overflow-auto">
+          {/* 오른쪽: 닫기 버튼 */}
+          <button
+            onClick={onClose}
+            aria-label="닫기 (ESC)"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </header>
+
+        {/* 메인 콘텐츠 - 스크롤 가능 */}
+        <main className="flex-1 overflow-auto">
         <div className="note-view max-w-3xl mx-auto px-16 py-12 min-h-full">
           {/* 1. 제목 입력 영역 */}
           <div className="mb-6">
@@ -1287,12 +1231,43 @@ export function NoteView({
           {/* 4. 구분선 */}
           <hr className="border-border my-6" />
 
-          {/* 5. 댓글 섹션 (플레이스홀더) */}
-          <div className="mb-6 text-sm text-muted-foreground flex items-center gap-2">
-            <span>A</span>
-            <span>댓글 추가</span>
-            <span className="text-xs">(준비 중)</span>
-          </div>
+          {/* 5. 백링크 섹션 */}
+          {backlinkBlocks.length > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
+                <span>←</span>
+                <span>연결된 블록</span>
+                <span className="text-xs bg-accent px-1.5 py-0.5 rounded">{backlinkBlocks.length}</span>
+              </div>
+              <div className="space-y-1">
+                {backlinkBlocks.map((linkedBlock) => {
+                  const linkedDate = linkedBlock.properties?.find((p) => p.propertyType === "date");
+                  const dateValue = linkedDate?.value.type === "date" ? linkedDate.value.date : null;
+
+                  return (
+                    <button
+                      key={linkedBlock.id}
+                      onClick={() => onNavigate?.(linkedBlock.id)}
+                      className="w-full text-left px-3 py-2 rounded hover:bg-accent transition-colors flex items-center gap-3 group"
+                    >
+                      <span className="text-muted-foreground text-sm">
+                        {linkedBlock.properties.some((p) => p.propertyType === "checkbox") ? "☐" :
+                         linkedBlock.properties.some((p) => p.propertyType === "contact") ? "○" :
+                         linkedBlock.properties.some((p) => p.propertyType === "person") ? "◇" : "□"}
+                      </span>
+                      <span className="flex-1 text-sm truncate">{linkedBlock.name || "(제목 없음)"}</span>
+                      {dateValue && (
+                        <span className="text-xs text-muted-foreground">
+                          {dateValue === getKoreanToday() ? "오늘" : dateValue.slice(5).replace("-", "/")}
+                        </span>
+                      )}
+                      <span className="text-muted-foreground text-sm opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* 6. 구분선 */}
           <hr className="border-border my-6" />
@@ -1318,27 +1293,22 @@ export function NoteView({
               [&_*:focus]:outline-none"
           />
         </div>
-      </main>
+        </main>
 
-      {/* 하단 상태 바 */}
-      <footer className="flex items-center justify-between px-6 py-2 border-t border-border text-xs text-muted-foreground">
-        <div className="flex items-center gap-4">
-          <kbd className="px-1 py-0.5 bg-muted rounded">ESC</kbd>
-          <span>닫기</span>
-          {hasNavigation && (
-            <>
-              <kbd className="px-1 py-0.5 bg-muted rounded">Alt+←/→</kbd>
-              <span>이동</span>
-            </>
-          )}
-          <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+⌫</kbd>
-          <span>삭제</span>
-          <span aria-live="polite">자동 저장</span>
-        </div>
-        <time dateTime={new Date(block.updatedAt).toISOString()} aria-label="마지막 수정">
-          {formatRelativeDate(block.updatedAt)} 수정됨
-        </time>
-      </footer>
+        {/* 하단 상태 바 */}
+        <footer className="flex items-center justify-between px-6 py-2 border-t border-border text-xs text-muted-foreground">
+          <div className="flex items-center gap-4">
+            <kbd className="px-1 py-0.5 bg-muted rounded">ESC</kbd>
+            <span>닫기</span>
+            <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+⌫</kbd>
+            <span>삭제</span>
+            <span aria-live="polite">자동 저장</span>
+          </div>
+          <time dateTime={new Date(block.updatedAt).toISOString()} aria-label="마지막 수정">
+            {formatRelativeDate(block.updatedAt)} 수정됨
+          </time>
+        </footer>
+      </div>
     </div>
   );
 }

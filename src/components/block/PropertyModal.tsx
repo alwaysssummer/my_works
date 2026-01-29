@@ -5,6 +5,16 @@ import { Block } from "@/types/block";
 import { Tag, DEFAULT_PROPERTIES, PropertyType, PriorityLevel, PRIORITY_COLORS, PRIORITY_LABELS, TAG_COLORS, RepeatType, REPEAT_LABELS, RepeatConfig } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { getKoreanNow, toKoreanDateString } from "@/lib/dateFormat";
+import {
+  getPropertyByType,
+  getCheckboxValue,
+  getDateValue,
+  getTagIds,
+  getPriorityLevel,
+  getRepeatConfig,
+  getContactInfo,
+  getMemoText,
+} from "@/lib/propertyHelpers";
 
 // 빠른 날짜 선택 옵션 (한국 시간)
 const QUICK_DATES = [
@@ -54,23 +64,22 @@ export function PropertyModal({
   const [newTagName, setNewTagName] = useState("");
   const [showTagInput, setShowTagInput] = useState(false);
 
-  // 현재 속성 값들
-  const checkboxProp = block.properties.find((p) => p.propertyType === "checkbox");
-  const dateProp = block.properties.find((p) => p.propertyType === "date");
-  const tagProp = block.properties.find((p) => p.propertyType === "tag");
-  const priorityProp = block.properties.find((p) => p.propertyType === "priority");
-  const memoProp = block.properties.find((p) => p.propertyType === "memo");
-  const contactProp = block.properties.find((p) => p.propertyType === "contact");
-  const repeatProp = block.properties.find((p) => p.propertyType === "repeat");
+  // 속성 추출 (헬퍼 함수 사용)
+  const checkboxProp = getPropertyByType(block, "checkbox");
+  const dateProp = getPropertyByType(block, "date");
+  const tagProp = getPropertyByType(block, "tag");
+  const priorityProp = getPropertyByType(block, "priority");
+  const memoProp = getPropertyByType(block, "memo");
+  const contactProp = getPropertyByType(block, "contact");
+  const repeatProp = getPropertyByType(block, "repeat");
 
-  const isChecked = checkboxProp?.value.type === "checkbox" && checkboxProp.value.checked;
-  const dateValue = dateProp?.value.type === "date" ? dateProp.value.date : "";
-  const tagIds = tagProp?.value.type === "tag" ? tagProp.value.tagIds : [];
-  const priorityLevel: PriorityLevel = priorityProp?.value.type === "priority" ? priorityProp.value.level : "none";
-  const memoText = memoProp?.value.type === "memo" ? memoProp.value.text : "";
-  const phone = contactProp?.value.type === "contact" ? contactProp.value.phone : "";
-  const email = contactProp?.value.type === "contact" ? contactProp.value.email : "";
-  const repeatConfig: RepeatConfig | null = repeatProp?.value.type === "repeat" ? repeatProp.value.config : null;
+  const isChecked = getCheckboxValue(block);
+  const dateValue = getDateValue(block);
+  const tagIds = getTagIds(block);
+  const priorityLevel = getPriorityLevel(block);
+  const memoText = getMemoText(block);
+  const { phone, email } = getContactInfo(block);
+  const repeatConfig = getRepeatConfig(block);
 
   // 블록 내용 (HTML 태그 제거)
   const blockText = block.content.replace(/<[^>]*>/g, "") || "(빈 블록)";

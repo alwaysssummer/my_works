@@ -12,7 +12,8 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 interface StudentInfo {
   id: string;
   name: string;
-  weeklyLessonCount: number;  // 이번 주 수업 횟수
+  regularLessonCount: number;    // 정규 수업 횟수
+  irregularLessonCount: number;  // 비정규 수업 횟수
 }
 
 interface SidebarProps {
@@ -158,7 +159,9 @@ export function Sidebar({
                     {displayName.length > 12 ? displayName.slice(0, 12) + "..." : displayName}
                   </span>
                   <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
-                    {student.weeklyLessonCount}
+                    {student.irregularLessonCount > 0
+                      ? `${student.irregularLessonCount}/${student.regularLessonCount}`
+                      : student.regularLessonCount}
                   </span>
                 </button>
               );

@@ -5,75 +5,55 @@ import { Sidebar } from "./Sidebar";
 import { ViewRouter } from "./ViewRouter";
 import { SearchModal } from "./SearchModal";
 import { NoteView } from "@/components/view";
-import { useBlocks } from "@/hooks/useBlocks";
+import { BlockProvider, useBlockContext } from "@/contexts/BlockContext";
 import { useSettings } from "@/hooks/useSettings";
 import { useTags } from "@/hooks/useTags";
 import { useBlockTypes } from "@/hooks/useBlockTypes";
 import { useCustomViews } from "@/hooks/useCustomViews";
 import { useView, filterBlocksByView } from "@/hooks/useView";
-import { VIEW_LABELS } from "@/types/view";
+import { useStudents } from "@/hooks/useStudents";
+import { VIEW_LABELS, ViewType } from "@/types/view";
 import { DEFAULT_PROPERTIES } from "@/types/property";
-import { getKoreanToday, getKoreanNow, toKoreanDateString } from "@/lib/dateFormat";
+import { getKoreanToday } from "@/lib/dateFormat";
+import { getPropertyByType, getTagIds } from "@/lib/propertyHelpers";
+import { UnifiedInput } from "@/components/input";
 
-export function AppLayout() {
+// 내부 레이아웃 컴포넌트 (Context 내부)
+function AppLayoutInner() {
+  // Context에서 블록 상태 가져오기
   const {
     blocks,
     isLoaded,
     addBlock,
     updateBlock,
     deleteBlock,
-    indentBlock,
-    outdentBlock,
-    toggleCollapse,
-    hasChildren,
-    isChildOfCollapsed,
-    getPrevBlockId,
-    getNextBlockId,
     addProperty,
     updateProperty,
-    updatePropertyByType,
     updatePropertyName,
     removeProperty,
-    removePropertyByType,
     updateBlockName,
     applyType,
-    moveBlockUp,
-    moveBlockDown,
-    duplicateBlock,
-    deleteCompletedTodos,
-    togglePin,
     moveToColumn,
-    // TOP 3 관련
     top3Blocks,
-    top3History,
-    addToTop3,
-    removeFromTop3,
-    // 다중 선택 관련
-    selectedBlockIds,
-    isSelectionMode,
-    toggleSelectionMode,
-    toggleBlockSelection,
-    selectAllBlocks,
-    clearSelection,
-    deleteSelectedBlocks,
-  } = useBlocks();
+  } = useBlockContext();
 
   const { tags, createTag, getTagsByIds } = useTags();
   const { blockTypes, createBlockType, deleteBlockType } = useBlockTypes();
   const { customViews, createView, deleteView } = useCustomViews();
   const { view, changeView: changeViewOriginal, selectDate, selectCustomView } = useView();
-
-  // 뷰 전환 시 NoteView 자동 닫기
-  const changeView = useCallback((...args: Parameters<typeof changeViewOriginal>) => {
-    setNoteViewBlockId(null);
-    changeViewOriginal(...args);
-  }, [changeViewOriginal]);
+  const { studentBlocks, students } = useStudents(blocks);
   const { settings } = useSettings();
 
   const [showSearch, setShowSearch] = useState(false);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [triggerQuickInput, setTriggerQuickInput] = useState(0);
   const [noteViewBlockId, setNoteViewBlockId] = useState<string | null>(null);
+
+  // 뷰 전환 시 NoteView 자동 닫기
+  const changeView = useCallback((...args: Parameters<typeof changeViewOriginal>) => {
+    setNoteViewBlockId(null);
+    changeViewOriginal(...args);
+  }, [changeViewOriginal]);
 
   // 키보드 단축키
   useEffect(() => {
@@ -113,31 +93,19 @@ export function AppLayout() {
     setNoteViewBlockId(blockId);
   }, []);
 
-  // 블록 선택 시 포커스 (기존 동작 - 에디터용)
-  const handleFocusBlock = useCallback((blockId: string) => {
-    setFocusedBlockId(blockId);
-    changeView("all");
-  }, [changeView]);
-
   // 뷰에 따라 필터링된 블록
   const filteredBlocks = useMemo(
     () => filterBlocksByView(blocks, view, getTagsByIds, customViews),
     [blocks, view, getTagsByIds, customViews]
   );
 
-  // 학생 블록 목록 (contact 속성이 있는 블록)
-  const studentBlocks = useMemo(() => {
-    return blocks.filter((b) => b.properties.some((p) => p.propertyType === "contact"));
-  }, [blocks]);
-
   // 현재 뷰의 블록 목록 (NoteView 이동용)
   const contextBlocks = useMemo(() => {
     if (view.type === "students") return studentBlocks;
     if (view.type === "dashboard") {
-      // 대시보드: TOP 3 + 오늘 할일 (한국 시간)
       const todayStr = getKoreanToday();
       const todayBlocks = blocks.filter((b) => {
-        const dateProp = b.properties.find((p) => p.propertyType === "date");
+        const dateProp = getPropertyByType(b, "date");
         return dateProp?.value?.type === "date" && dateProp.value.date === todayStr;
       });
       return [...top3Blocks, ...todayBlocks.filter((b) => !top3Blocks.some((t) => t.id === b.id))];
@@ -161,11 +129,8 @@ export function AppLayout() {
   const handleDeleteWithNav = useCallback(
     (blockId: string) => {
       const currentIndex = contextBlocks.findIndex((b) => b.id === blockId);
-
-      // 삭제 실행
       deleteBlock(blockId);
 
-      // 이전 블록으로 이동, 없으면 다음 블록, 없으면 닫기
       if (currentIndex > 0) {
         setNoteViewBlockId(contextBlocks[currentIndex - 1].id);
       } else if (currentIndex < contextBlocks.length - 1) {
@@ -179,126 +144,17 @@ export function AppLayout() {
 
   // 블록 카운트 계산
   const blockCounts = useMemo(() => {
-    return {
-      all: blocks.length,
-    };
+    return { all: blocks.length };
   }, [blocks]);
 
-  // 이번 주 범위 계산 (월요일 ~ 일요일)
-  const getWeekRange = useCallback(() => {
-    const now = getKoreanNow();
-    const day = now.getDay();
-    // 일요일(0)이면 -6, 아니면 1 - day
-    const diff = day === 0 ? -6 : 1 - day;
-
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() + diff);
-    weekStart.setHours(0, 0, 0, 0);
-
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
-
-    return { weekStart, weekEnd };
-  }, []);
-
-  // 특정 요일의 이번 주 날짜 구하기 (0: 일요일 ~ 6: 토요일)
-  const getDateForWeekday = useCallback((weekStart: Date, weekday: number) => {
-    const result = new Date(weekStart);
-    // weekStart는 월요일(1)이므로, weekday와의 차이 계산
-    // 월요일(1)=0, 화요일(2)=1, ..., 일요일(0)=6
-    const dayOffset = weekday === 0 ? 6 : weekday - 1;
-    result.setDate(weekStart.getDate() + dayOffset);
-    return result;
-  }, []);
-
-  // 학생 목록 (contact 속성이 있는 블록) + 주간 수업 수
-  const students = useMemo(() => {
-    const getPlainText = (html: string) => {
-      if (typeof window === "undefined") return html;
-      const div = document.createElement("div");
-      div.innerHTML = html;
-      return div.textContent || div.innerText || "";
-    };
-
-    const { weekStart, weekEnd } = getWeekRange();
-    const weekStartStr = toKoreanDateString(weekStart);
-    const weekEndStr = toKoreanDateString(weekEnd);
-
-    // 학생 블록 목록
-    const studentBlocks = blocks.filter((b) =>
-      b.properties.some((p) => p.propertyType === "contact")
-    );
-
-    // 수업 블록 목록 (person + date 속성이 있는 블록)
-    const lessonBlocks = blocks.filter((b) =>
-      b.properties.some((p) => p.propertyType === "person") &&
-      b.properties.some((p) => p.propertyType === "date")
-    );
-
-    return studentBlocks.map((studentBlock) => {
-      // 이 학생의 주간 수업 수 계산
-      let lessonCount = 0;
-
-      lessonBlocks.forEach((lesson) => {
-        const personProp = lesson.properties.find((p) => p.propertyType === "person");
-        const dateProp = lesson.properties.find((p) => p.propertyType === "date");
-        const repeatProp = lesson.properties.find((p) => p.propertyType === "repeat");
-
-        if (!personProp || !dateProp) return;
-        if (personProp.value?.type !== "person") return;
-        if (dateProp.value?.type !== "date") return;
-
-        // 이 학생과 연결된 수업인지 확인
-        const linkedBlockIds = personProp.value.blockIds || [];
-        const isLinked = linkedBlockIds.includes(studentBlock.id);
-        if (!isLinked) return;
-
-        const dateValue = dateProp.value.date;
-        if (!dateValue) return;
-
-        const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
-
-        if (!repeatConfig) {
-          // 비정규 수업: 날짜가 이번 주 범위 내면 +1
-          if (dateValue >= weekStartStr && dateValue <= weekEndStr) {
-            lessonCount++;
-          }
-        } else if (repeatConfig.type === "weekly") {
-          // 정규 수업: 해당 요일이 이번 주에 있으면 +1
-          const weekdays = repeatConfig.weekdays || [];
-          weekdays.forEach((day: number) => {
-            // 이번 주 해당 요일의 날짜
-            const targetDate = getDateForWeekday(weekStart, day);
-            const targetDateStr = toKoreanDateString(targetDate);
-            // 원본 날짜 이후인 경우에만 카운트
-            if (targetDateStr >= dateValue) {
-              lessonCount++;
-            }
-          });
-        }
-      });
-
-      return {
-        id: studentBlock.id,
-        name: studentBlock.name || getPlainText(studentBlock.content) || "이름 없음",
-        weeklyLessonCount: lessonCount,
-      };
-    });
-  }, [blocks, getWeekRange, getDateForWeekday]);
-
   // 학생 선택 핸들러
-  const handleSelectStudent = useCallback(
-    (studentId: string) => {
-      setNoteViewBlockId(studentId);
-    },
-    []
-  );
+  const handleSelectStudent = useCallback((studentId: string) => {
+    setNoteViewBlockId(studentId);
+  }, []);
 
   // 학생 추가 핸들러
   const handleAddStudent = useCallback(() => {
     const newBlockId = addBlock();
-    // contact 속성 추가
     addProperty(newBlockId, "contact");
     setNoteViewBlockId(newBlockId);
   }, [addBlock, addProperty]);
@@ -308,47 +164,36 @@ export function AppLayout() {
     (date: string, content: string, studentId?: string, isRepeat?: boolean, time?: string) => {
       const newBlockId = addBlock();
 
-      // 학생 선택 시 → 수업 (제목에 학생 이름 저장)
       if (studentId) {
-        updateBlockName(newBlockId, content); // 학생 이름을 제목에
+        updateBlockName(newBlockId, content);
       } else {
-        updateBlock(newBlockId, content); // 일반 일정은 본문에
+        updateBlock(newBlockId, content);
       }
 
-      // 날짜 속성 추가
       addProperty(newBlockId, "date");
 
-      // 학생 선택 시 → 수업
       if (studentId) {
-        // person 속성으로 학생 연결
         addProperty(newBlockId, "person");
-
-        // 기본 수업 시간 (50분)
         addProperty(newBlockId, "duration");
-
-        // 반복 설정 시 → 정규 수업
         if (isRepeat) {
           addProperty(newBlockId, "repeat");
         }
       }
 
-      // 체크박스 추가 (할일로 관리 가능하게)
       addProperty(newBlockId, "checkbox");
     },
     [addBlock, updateBlock, updateBlockName, addProperty]
   );
 
-  // 자주 쓰는 태그 계산 (사용 빈도 기준 상위 5개)
+  // 자주 쓰는 태그 계산
   const frequentTags = useMemo(() => {
     const tagUsage: Record<string, number> = {};
 
     blocks.forEach((block) => {
-      const tagProperty = block.properties.find((p) => p.propertyType === "tag");
-      if (tagProperty?.value.type === "tag") {
-        tagProperty.value.tagIds.forEach((tagId: string) => {
-          tagUsage[tagId] = (tagUsage[tagId] || 0) + 1;
-        });
-      }
+      const blockTagIds = getTagIds(block);
+      blockTagIds.forEach((tagId: string) => {
+        tagUsage[tagId] = (tagUsage[tagId] || 0) + 1;
+      });
     });
 
     return tags
@@ -372,6 +217,11 @@ export function AppLayout() {
     }
     return VIEW_LABELS[view.type];
   }, [view, tags, customViews]);
+
+  // UnifiedInput 표시 여부 결정 (모든 뷰에서 표시)
+  const shouldShowUnifiedInput = useCallback((_viewType: ViewType): boolean => {
+    return true;
+  }, []);
 
   // 캘린더에서 날짜 선택
   const handleCalendarSelectDate = useCallback(
@@ -403,7 +253,6 @@ export function AppLayout() {
       const blockType = blockTypes.find((t) => t.id === typeId);
       if (!blockType) return;
 
-      // 속성 ID에 해당하는 타입 찾기
       const types = blockType.propertyIds.map((propId) => {
         const prop = DEFAULT_PROPERTIES.find((p) => p.id === propId);
         return prop?.type || "text";
@@ -418,7 +267,8 @@ export function AppLayout() {
   const handleToggleCheckbox = useCallback(
     (blockId: string, checked: boolean) => {
       const block = blocks.find((b) => b.id === blockId);
-      const checkboxProp = block?.properties.find((p) => p.propertyType === "checkbox");
+      if (!block) return;
+      const checkboxProp = getPropertyByType(block, "checkbox");
       if (checkboxProp) {
         updateProperty(blockId, checkboxProp.id, { type: "checkbox", checked });
       }
@@ -444,62 +294,43 @@ export function AppLayout() {
         onSelectStudent={handleSelectStudent}
       />
 
-      <ViewRouter
+      {/* 메인 영역 */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* 통합 입력창 - 특정 뷰에서만 표시 */}
+        {shouldShowUnifiedInput(view.type) && (
+          <div className="sticky top-0 z-20 bg-background border-b border-border">
+            <UnifiedInput
+              placeholder="입력하세요..."
+              showHints={true}
+              triggerFocus={triggerQuickInput}
+              autoFocus={isLoaded}
+              onOpenFullPage={handleSelectBlock}
+            />
+          </div>
+        )}
+
+        {/* ViewRouter - props 대폭 감소 (58개 → 17개) */}
+        <ViewRouter
         view={view}
-        blocks={blocks}
-        filteredBlocks={filteredBlocks}
-        isLoaded={isLoaded}
         viewTitle={viewTitle}
+        filteredBlocks={filteredBlocks}
         tags={tags}
         blockTypes={blockTypes}
-        top3Blocks={top3Blocks}
-        top3History={top3History}
         students={students}
         settings={settings}
         frequentTags={frequentTags}
-        selectedBlockIds={selectedBlockIds}
-        isSelectionMode={isSelectionMode}
-        selectedBlockId={focusedBlockId}
-        onAddBlock={addBlock}
-        onUpdateBlock={updateBlock}
-        onDeleteBlock={deleteBlock}
         onSelectBlock={handleSelectBlock}
         onAddStudent={handleAddStudent}
-        onAddToTop3={addToTop3}
-        onRemoveFromTop3={removeFromTop3}
-        onToggleCheckbox={handleToggleCheckbox}
-        onAddProperty={addProperty}
         onCalendarSelectDate={handleCalendarSelectDate}
         onAddSchedule={handleAddSchedule}
-        onIndentBlock={indentBlock}
-        onOutdentBlock={outdentBlock}
-        onToggleCollapse={toggleCollapse}
-        hasChildren={hasChildren}
-        isChildOfCollapsed={isChildOfCollapsed}
-        getPrevBlockId={getPrevBlockId}
-        getNextBlockId={getNextBlockId}
-        onUpdateProperty={updateProperty}
-        onUpdatePropertyByType={updatePropertyByType}
-        onUpdateBlockName={updateBlockName}
-        onUpdatePropertyName={updatePropertyName}
-        onRemoveProperty={removeProperty}
-        onRemovePropertyByType={removePropertyByType}
         onCreateTag={createTag}
         onApplyType={handleApplyTypeToBlock}
-        onMoveBlockUp={moveBlockUp}
-        onMoveBlockDown={moveBlockDown}
-        onDuplicateBlock={duplicateBlock}
-        onDeleteCompletedTodos={deleteCompletedTodos}
+        onToggleCheckbox={handleToggleCheckbox}
+        selectedBlockId={focusedBlockId}
         onClearSelection={() => setFocusedBlockId(null)}
         triggerQuickInput={triggerQuickInput}
-        onTogglePin={togglePin}
-        onMoveToColumn={moveToColumn}
-        onToggleSelectionMode={toggleSelectionMode}
-        onToggleBlockSelection={toggleBlockSelection}
-        onSelectAllBlocks={selectAllBlocks}
-        onClearBlockSelection={clearSelection}
-        onDeleteSelectedBlocks={deleteSelectedBlocks}
-      />
+        />
+      </div>
 
       {/* 검색 모달 */}
       <SearchModal
@@ -530,5 +361,14 @@ export function AppLayout() {
         />
       )}
     </div>
+  );
+}
+
+// 메인 AppLayout (BlockProvider로 감싸기)
+export function AppLayout() {
+  return (
+    <BlockProvider>
+      <AppLayoutInner />
+    </BlockProvider>
   );
 }

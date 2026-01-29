@@ -478,7 +478,7 @@ export function Dashboard({
               <div className="grid grid-cols-3 gap-2">
                 {yesterdayTop3.blocks.map((block, index) => (
                   <div
-                    key={block.id}
+                    key={`${block.id}-${index}`}
                     className={`px-3 py-2 rounded-lg text-xs ${
                       block.completed
                         ? "bg-green-100 text-green-700"

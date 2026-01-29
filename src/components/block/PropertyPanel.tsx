@@ -14,6 +14,17 @@ import {
   RepeatConfig,
 } from "@/types/property";
 import { TagInput } from "./TagInput";
+import {
+  getPropertyByType,
+  getCheckboxValue,
+  getDateValue,
+  getTagIds,
+  getPriorityLevel,
+  getRepeatConfig,
+  getPersonBlockIds,
+  getContactInfo,
+  getMemoText,
+} from "@/lib/propertyHelpers";
 
 interface PropertyPanelProps {
   block: Block;
@@ -36,20 +47,15 @@ export function PropertyPanel({
   onCreateTag,
   onClose,
 }: PropertyPanelProps) {
-  // 속성 찾기 헬퍼
-  const getProperty = useCallback(
-    (propertyId: string) => block.properties.find((p) => p.propertyType === propertyId),
-    [block.properties]
-  );
-
-  const checkboxProperty = getProperty("checkbox");
-  const dateProperty = getProperty("date");
-  const tagProperty = getProperty("tag");
-  const priorityProperty = getProperty("priority");
-  const repeatProperty = getProperty("repeat");
-  const personProperty = getProperty("person");
-  const contactProperty = getProperty("contact");
-  const memoProperty = getProperty("memo");
+  // 속성 추출 (헬퍼 함수 사용)
+  const checkboxProperty = getPropertyByType(block, "checkbox");
+  const dateProperty = getPropertyByType(block, "date");
+  const tagProperty = getPropertyByType(block, "tag");
+  const priorityProperty = getPropertyByType(block, "priority");
+  const repeatProperty = getPropertyByType(block, "repeat");
+  const personProperty = getPropertyByType(block, "person");
+  const contactProperty = getPropertyByType(block, "contact");
+  const memoProperty = getPropertyByType(block, "memo");
 
   const hasCheckbox = !!checkboxProperty;
   const hasDate = !!dateProperty;
@@ -60,15 +66,14 @@ export function PropertyPanel({
   const hasContact = !!contactProperty;
   const hasMemo = !!memoProperty;
 
-  const isChecked = checkboxProperty?.value.type === "checkbox" && checkboxProperty.value.checked;
-  const dateValue = dateProperty?.value.type === "date" ? dateProperty.value.date : "";
-  const tagIds = tagProperty?.value.type === "tag" ? tagProperty.value.tagIds : [];
-  const priorityLevel = priorityProperty?.value.type === "priority" ? priorityProperty.value.level : "none";
-  const repeatConfig = repeatProperty?.value.type === "repeat" ? repeatProperty.value.config : null;
-  const personBlockIds = personProperty?.value.type === "person" ? personProperty.value.blockIds : [];
-  const contactPhone = contactProperty?.value.type === "contact" ? contactProperty.value.phone || "" : "";
-  const contactEmail = contactProperty?.value.type === "contact" ? contactProperty.value.email || "" : "";
-  const memoText = memoProperty?.value.type === "memo" ? memoProperty.value.text : "";
+  const isChecked = getCheckboxValue(block);
+  const dateValue = getDateValue(block);
+  const tagIds = getTagIds(block);
+  const priorityLevel = getPriorityLevel(block);
+  const repeatConfig = getRepeatConfig(block);
+  const personBlockIds = getPersonBlockIds(block);
+  const { phone: contactPhone, email: contactEmail } = getContactInfo(block);
+  const memoText = getMemoText(block);
 
   // 속성이 없는 것들
   const missingProperties = DEFAULT_PROPERTIES.filter(

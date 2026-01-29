@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Block, BlockColumn } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { ViewType } from "@/types/view";
 import { BlockItem, PropertyModal } from "@/components/block";
 import { NoteView } from "@/components/view/NoteView";
-import { ThreeColumnLayout } from "./columns";
-import { processBlockInput } from "@/lib/blockDefaults";
+import { ClassificationSection } from "@/components/view/ClassificationSection";
+import { useClassification } from "@/hooks/useClassification";
+import { ClassificationType } from "@/lib/autoClassify";
 
 // 정렬 타입
 type SortType = "newest" | "oldest" | "date" | "priority";
@@ -128,11 +129,6 @@ export function Editor({
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showUnorganizedOnly, setShowUnorganizedOnly] = useState(false);
 
-  // 빠른 입력창 상태
-  const [quickInputExpanded, setQuickInputExpanded] = useState(false);
-  const [quickInputValue, setQuickInputValue] = useState("");
-  const quickInputRef = useRef<HTMLTextAreaElement>(null);
-
   // 검색에서 선택된 블록에 포커스
   useEffect(() => {
     if (selectedBlockId) {
@@ -163,64 +159,6 @@ export function Editor({
     }
   }, [isLoaded, blocks.length, onAddBlock]);
 
-  // 페이지 로드 시 빠른 입력창에 자동 포커스
-  useEffect(() => {
-    if (isLoaded && quickInputRef.current) {
-      // 약간의 딜레이 후 포커스 (렌더링 완료 대기)
-      const timer = setTimeout(() => {
-        quickInputRef.current?.focus();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoaded]);
-
-  // 빠른 입력창 외부 클릭 시 접기
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (quickInputExpanded && !target.closest(".quick-input-card")) {
-        if (!quickInputValue.trim()) {
-          setQuickInputExpanded(false);
-        }
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [quickInputExpanded, quickInputValue]);
-
-  // 빠른 입력창 제출
-  const handleQuickInputSubmit = useCallback(() => {
-    if (quickInputValue.trim()) {
-      const lines = quickInputValue.trim().split("\n");
-      // 각 줄마다 블록 생성 (name/content를 옵션으로 전달)
-      lines.forEach((line) => {
-        if (line.trim()) {
-          const processed = processBlockInput(line.trim());
-          onAddBlock(undefined, {
-            name: processed.name,
-            content: processed.content,
-          });
-        }
-      });
-      setQuickInputValue("");
-      setQuickInputExpanded(false);
-    }
-  }, [quickInputValue, onAddBlock]);
-
-  // 빠른 입력창에 포커스 (외부에서 호출용)
-  const focusQuickInput = useCallback(() => {
-    setQuickInputExpanded(true);
-    setTimeout(() => {
-      quickInputRef.current?.focus();
-    }, 50);
-  }, []);
-
-  // n 단축키로 빠른 입력창 포커스
-  useEffect(() => {
-    if (triggerQuickInput && triggerQuickInput > 0) {
-      focusQuickInput();
-    }
-  }, [triggerQuickInput, focusQuickInput]);
 
   const handleAddAfter = useCallback(
     (afterId: string) => {
@@ -398,32 +336,213 @@ export function Editor({
     );
   }
 
-  // 전체 뷰: 3열 레이아웃
-  if (viewType === "all" && onMoveToColumn) {
+  // GTD 분류 훅
+  const { sections, unclassifiedCount, totalCount } = useClassification(filteredBlocks);
+
+  // 전체 보기 전용 다중 선택 상태
+  const [isAllViewSelectionMode, setIsAllViewSelectionMode] = useState(false);
+  const [allViewSelectedIds, setAllViewSelectedIds] = useState<Set<string>>(new Set());
+
+  // 숨긴 섹션 상태
+  const [hiddenSections, setHiddenSections] = useState<Set<ClassificationType>>(new Set());
+
+  // 섹션 숨기기/표시 핸들러
+  const handleHideSection = useCallback((type: ClassificationType) => {
+    setHiddenSections((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(type);
+      return newSet;
+    });
+  }, []);
+
+  const handleShowSection = useCallback((type: ClassificationType) => {
+    setHiddenSections((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(type);
+      return newSet;
+    });
+  }, []);
+
+  // 표시할 섹션과 숨긴 섹션 분리
+  const visibleSections = sections.filter((s) => !hiddenSections.has(s.type));
+  const hiddenSectionsData = sections.filter((s) => hiddenSections.has(s.type));
+
+  // 전체 보기 선택 모드 토글
+  const handleToggleAllViewSelectionMode = useCallback(() => {
+    setIsAllViewSelectionMode((prev) => {
+      if (prev) {
+        // 선택 모드 해제 시 선택 초기화
+        setAllViewSelectedIds(new Set());
+      }
+      return !prev;
+    });
+  }, []);
+
+  // 개별 블록 선택 토글
+  const handleToggleAllViewSelection = useCallback((blockId: string) => {
+    setAllViewSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(blockId)) {
+        newSet.delete(blockId);
+      } else {
+        newSet.add(blockId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // 섹션 전체 선택/해제
+  const handleSelectSection = useCallback((blockIds: string[]) => {
+    setAllViewSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      // 섹션의 모든 블록이 선택되어 있으면 해제, 아니면 전체 선택
+      const allSelected = blockIds.every((id) => prev.has(id));
+      if (allSelected) {
+        blockIds.forEach((id) => newSet.delete(id));
+      } else {
+        blockIds.forEach((id) => newSet.add(id));
+      }
+      return newSet;
+    });
+  }, []);
+
+  // 전체 선택
+  const handleSelectAllBlocks = useCallback(() => {
+    const allBlockIds = filteredBlocks.map((b) => b.id);
+    setAllViewSelectedIds(new Set(allBlockIds));
+  }, [filteredBlocks]);
+
+  // 선택 해제
+  const handleClearAllViewSelection = useCallback(() => {
+    setAllViewSelectedIds(new Set());
+  }, []);
+
+  // 선택된 블록 삭제
+  const handleDeleteAllViewSelected = useCallback(() => {
+    if (allViewSelectedIds.size > 0 && confirm(`${allViewSelectedIds.size}개 블록을 삭제할까요?`)) {
+      allViewSelectedIds.forEach((id) => onDeleteBlock(id));
+      setAllViewSelectedIds(new Set());
+      setIsAllViewSelectionMode(false);
+    }
+  }, [allViewSelectedIds, onDeleteBlock]);
+
+  // 전체 뷰: GTD 분류 뷰
+  if (viewType === "all") {
     return (
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* 간소화된 헤더 */}
+        {/* 헤더 */}
         <header className="h-12 flex items-center justify-between px-4 border-b border-border bg-background flex-shrink-0">
-          <div className="text-sm font-medium">{viewTitle}</div>
-          <span className="text-xs text-muted-foreground">
-            {blocks.length}개 블록
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">{viewTitle}</span>
+            {unclassifiedCount > 0 && !isAllViewSelectionMode && (
+              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full">
+                미분류 {unclassifiedCount}개
+              </span>
+            )}
+
+            {/* 선택 모드 토글 버튼 */}
+            <button
+              onClick={handleToggleAllViewSelectionMode}
+              className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                isAllViewSelectionMode
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-accent text-muted-foreground"
+              }`}
+              title="다중 선택 모드"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+              {isAllViewSelectionMode ? "선택 중" : "선택"}
+            </button>
+
+            {/* 숨긴 섹션 칩 */}
+            {hiddenSectionsData.length > 0 && (
+              <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+                <span className="text-xs text-muted-foreground">접힘:</span>
+                {hiddenSectionsData.map((section) => (
+                  <button
+                    key={section.type}
+                    onClick={() => handleShowSection(section.type)}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-muted hover:bg-accent rounded transition-colors"
+                    title="클릭하여 펼치기"
+                  >
+                    <span>{section.info.icon}</span>
+                    <span>{section.info.label}</span>
+                    <span className="text-muted-foreground">{section.blocks.length}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* 선택 모드 액션 바 */}
+            {isAllViewSelectionMode && (
+              <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded">
+                <span className="text-xs text-muted-foreground">
+                  {allViewSelectedIds.size}개 선택됨
+                </span>
+                <button
+                  onClick={handleSelectAllBlocks}
+                  className="text-xs px-2 py-0.5 rounded hover:bg-background transition-colors"
+                >
+                  전체 선택
+                </button>
+                <button
+                  onClick={handleClearAllViewSelection}
+                  className="text-xs px-2 py-0.5 rounded hover:bg-background transition-colors"
+                >
+                  선택 해제
+                </button>
+                <button
+                  onClick={handleDeleteAllViewSelected}
+                  disabled={allViewSelectedIds.size === 0}
+                  className="text-xs px-2 py-0.5 rounded text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  삭제
+                </button>
+              </div>
+            )}
+
+            {!isAllViewSelectionMode && (
+              <span className="text-xs text-muted-foreground">
+                {totalCount}개 블록
+              </span>
+            )}
+          </div>
         </header>
 
-        {/* 3열 레이아웃 */}
-        <div className="flex-1 overflow-hidden">
-          <ThreeColumnLayout
-            blocks={blocks}
-            allTags={tags}
-            onAddBlock={onAddBlock}
-            onUpdateBlock={onUpdateBlock}
-            onUpdateBlockName={onUpdateBlockName}
-            onMoveToColumn={onMoveToColumn}
-            onOpenDetail={handleOpenPropertyPanel}
-            onAddProperty={onAddProperty}
-            onCreateTag={onCreateTag}
-          />
-        </div>
+        {/* 메인 영역 - 동적 칸반 레이아웃 (화면 폭 최대 활용) */}
+        <main className="flex-1 overflow-hidden bg-background">
+          <div className="h-full px-4 py-4">
+            <div
+              className="h-full grid gap-4"
+              style={{
+                gridTemplateColumns: `repeat(${Math.min(visibleSections.length, 5)}, minmax(0, 1fr))`,
+              }}
+            >
+              {visibleSections.map((section) => (
+                <ClassificationSection
+                  key={section.type}
+                  type={section.type}
+                  blocks={section.blocks}
+                  allTags={tags}
+                  onBlockClick={handleFocus}
+                  onOpenDetail={handleOpenPropertyPanel}
+                  onDeleteBlock={onDeleteBlock}
+                  isSelectionMode={isAllViewSelectionMode}
+                  selectedIds={allViewSelectedIds}
+                  onToggleSelection={handleToggleAllViewSelection}
+                  onSelectSection={handleSelectSection}
+                  variant="card"
+                  onHide={() => handleHideSection(section.type)}
+                />
+              ))}
+            </div>
+          </div>
+        </main>
 
         {/* 블록 상세 뷰 (노션 스타일) */}
         {panelBlock && (
@@ -581,83 +700,6 @@ export function Editor({
                   {visibleBlocks.length}개 블록
                 </span>
               )}
-            </div>
-          </div>
-
-          {/* 빠른 입력창 - 구글 킵 스타일 카드 */}
-          <div className="px-4 pb-3">
-            <div className="max-w-3xl mx-auto">
-              <div
-                className={`quick-input-card rounded-lg border shadow-sm transition-all duration-200 ${
-                  quickInputExpanded
-                    ? "border-primary bg-card shadow-md"
-                    : "border-border bg-accent/30 hover:bg-accent/50 hover:shadow"
-                }`}
-              >
-                {/* 접힌 상태: 한 줄 입력창 */}
-                {!quickInputExpanded ? (
-                  <div
-                    className="flex items-center gap-3 px-4 py-3 cursor-text"
-                    onClick={() => {
-                      setQuickInputExpanded(true);
-                      setTimeout(() => quickInputRef.current?.focus(), 50);
-                    }}
-                  >
-                    <span className="text-muted-foreground text-xl">+</span>
-                    <span className="text-muted-foreground text-sm">
-                      메모 작성...
-                    </span>
-                  </div>
-                ) : (
-                  /* 확장된 상태: 여러 줄 입력 + 툴바 */
-                  <div className="p-3">
-                    <textarea
-                      ref={quickInputRef}
-                      value={quickInputValue}
-                      onChange={(e) => setQuickInputValue(e.target.value)}
-                      placeholder="여기에 입력하세요...&#10;여러 줄을 입력하면 각각 블록이 됩니다."
-                      className="w-full bg-transparent outline-none text-sm resize-none min-h-[80px] placeholder:text-muted-foreground"
-                      rows={3}
-                      onKeyDown={(e) => {
-                        // Ctrl+Enter로 제출
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                          e.preventDefault();
-                          handleQuickInputSubmit();
-                        }
-                        // Escape로 취소
-                        if (e.key === "Escape") {
-                          setQuickInputValue("");
-                          setQuickInputExpanded(false);
-                        }
-                      }}
-                    />
-                    {/* 하단 툴바 */}
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <span className="text-xs">Ctrl+Enter로 추가</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setQuickInputValue("");
-                            setQuickInputExpanded(false);
-                          }}
-                          className="px-3 py-1 text-xs text-muted-foreground hover:bg-accent rounded"
-                        >
-                          취소
-                        </button>
-                        <button
-                          onClick={handleQuickInputSubmit}
-                          disabled={!quickInputValue.trim()}
-                          className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          추가
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </header>

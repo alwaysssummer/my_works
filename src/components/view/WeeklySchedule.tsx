@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Block, BlockProperty, getBlockDisplayName } from "@/types/block";
-import { PropertyType } from "@/types/property";
+import { PropertyType, Tag } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
@@ -10,6 +10,7 @@ import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKor
 
 interface WeeklyScheduleProps {
   blocks: Block[];
+  tags: Tag[];
   settings: ScheduleSettings;
   onAddBlock: (afterId?: string) => string;
   onUpdateBlock: (id: string, content: string) => void;
@@ -28,20 +29,17 @@ interface ScheduleEvent {
   studentName?: string;
 }
 
-// 학생 색상 팔레트
-const STUDENT_COLORS = [
-  { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" }, // blue
-  { bg: "#dcfce7", border: "#22c55e", text: "#166534" }, // green
-  { bg: "#fef3c7", border: "#f59e0b", text: "#92400e" }, // amber
-  { bg: "#fce7f3", border: "#ec4899", text: "#9d174d" }, // pink
-  { bg: "#e0e7ff", border: "#6366f1", text: "#3730a3" }, // indigo
-  { bg: "#fed7d7", border: "#f87171", text: "#991b1b" }, // red
-  { bg: "#d1fae5", border: "#10b981", text: "#065f46" }, // emerald
-  { bg: "#fef9c3", border: "#eab308", text: "#854d0e" }, // yellow
-];
+// 학년별 색상 (중등부/고등부 구분)
+const GRADE_COLORS = {
+  중등부: { bg: "#f3f4f6", border: "#9ca3af", text: "#374151" },  // 연한 회색
+  고등부: { bg: "#d1d5db", border: "#6b7280", text: "#111827" },  // 진한 회색
+  미지정: { bg: "#e5e7eb", border: "#9ca3af", text: "#4b5563" },  // 기본 회색
+  특별일정: { bg: "#fef3c7", border: "#eab308", text: "#854d0e" }, // 노란색
+};
 
 export function WeeklySchedule({
   blocks,
+  tags,
   settings,
   onAddBlock,
   onUpdateBlock,
@@ -80,14 +78,28 @@ export function WeeklySchedule({
     );
   }, [blocks]);
 
-  // 학생별 색상 매핑
-  const studentColorMap = useMemo(() => {
-    const map: Record<string, typeof STUDENT_COLORS[0]> = {};
-    studentBlocks.forEach((block, index) => {
-      map[block.id] = STUDENT_COLORS[index % STUDENT_COLORS.length];
-    });
-    return map;
-  }, [studentBlocks]);
+  // 학생의 학년(태그) 기반 색상 가져오기
+  const getStudentGradeColor = useCallback((studentId: string | null) => {
+    if (!studentId) return GRADE_COLORS.특별일정;
+
+    const studentBlock = blocks.find(b => b.id === studentId);
+    if (!studentBlock) return GRADE_COLORS.미지정;
+
+    // 학생의 태그에서 중등부/고등부 확인
+    const tagProp = studentBlock.properties.find(p => p.propertyType === "tag");
+    if (tagProp?.value.type === "tag" && tagProp.value.tagIds) {
+      const tagIds = tagProp.value.tagIds;
+      // tagIds를 태그 이름으로 변환
+      const tagNames = tagIds
+        .map(id => tags.find(t => t.id === id)?.name)
+        .filter(Boolean);
+
+      if (tagNames.includes("중등부")) return GRADE_COLORS.중등부;
+      if (tagNames.includes("고등부")) return GRADE_COLORS.고등부;
+    }
+
+    return GRADE_COLORS.미지정;
+  }, [blocks, tags]);
 
   // 주간 날짜 배열 (월~일)
   const weekDays = useMemo(() => {
@@ -565,18 +577,14 @@ export function WeeklySchedule({
                     // 학생 연결 여부로 수업/일정 구분
                     const isLesson = studentId !== null;
 
-                    // 색상 결정: 학생 있으면 학생 색상, 없으면 일정 색상
-                    const color = studentId
-                      ? studentColorMap[studentId]
-                      : { bg: "#f3f4f6", border: "#9ca3af", text: "#374151" }; // 일반 일정은 회색
+                    // 색상 결정: 특별 일정(비정규 OR 학생 없음) vs 정규 수업(학년별)
+                    const isSpecialEvent = !isRegular || !studentId;
+                    const color = isSpecialEvent
+                      ? GRADE_COLORS.특별일정
+                      : getStudentGradeColor(studentId);
 
-                    // 비정규 수업은 연한 노란색 배경
-                    const bgColor = isLesson && !isRegular
-                      ? "#fef9c3" // 비정규 수업 - 연한 노란색
-                      : color?.bg || "#dbeafe";
-                    const borderColor = isLesson && !isRegular
-                      ? "#eab308" // 비정규 수업 - 노란색 테두리
-                      : color?.border || "#3b82f6";
+                    const bgColor = color.bg;
+                    const borderColor = color.border;
 
                     // 과거 날짜인지 확인
                     const isPast = isPastDate(event.date);
@@ -622,17 +630,17 @@ export function WeeklySchedule({
                             )}
                             <div
                               className="text-xs font-medium truncate flex-1 pr-3"
-                              style={{ color: isLesson && !isRegular ? "#854d0e" : color?.text || "#1e40af" }}
+                              style={{ color: color.text }}
                             >
                               {event.studentName ? (event.studentName.length > 15 ? event.studentName.slice(0, 15) + "..." : event.studentName) : getBlockTitle(event.block.content, 15) || "수업"}
                             </div>
                           </div>
                           <div
                             className="text-[10px] opacity-75"
-                            style={{ color: isLesson && !isRegular ? "#854d0e" : color?.text || "#1e40af" }}
+                            style={{ color: color.text }}
                           >
                             {event.startTime}
-                            {isLesson && !isRegular && " (비정규)"}
+                            {isSpecialEvent && isLesson && " (비정규)"}
                           </div>
                         </div>
                       </div>
@@ -879,18 +887,23 @@ function AddLessonModal({
     }
   }, [editingEvent]);
 
-  // timeRange가 있으면 10분 단위 옵션 생성
+  // 클릭한 시간 기준 앞 3개 + 선택 시간 + 뒤 2개 (총 6개 버튼)
   const timeOptions = useMemo(() => {
-    if (!timeRange) return null;
-
+    const clickedMinutes = timeToMinutes(time);
     const options: string[] = [];
-    for (let m = timeRange.start; m < timeRange.end; m += 10) {
-      const h = Math.floor(m / 60);
-      const min = m % 60;
-      options.push(`${h.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`);
+
+    // 앞 3개: -30, -20, -10분 / 선택한 시간: 0 / 뒤 2개: +10, +20분
+    for (let offset = -30; offset <= 20; offset += 10) {
+      const m = clickedMinutes + offset;
+      if (m >= 0 && m < 24 * 60) {
+        const h = Math.floor(m / 60);
+        const min = m % 60;
+        options.push(`${h.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`);
+      }
     }
+
     return options;
-  }, [timeRange]);
+  }, [time]);
 
   // 학생 선택 시 해당 학생의 기본 수업 시간으로 설정
   const handleStudentChange = (studentId: string) => {
@@ -983,33 +996,22 @@ function AddLessonModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               시작 시간
             </label>
-            {timeOptions ? (
-              // 겹치는 일정 있음 → 버튼 그룹
-              <div className="flex gap-2 flex-wrap">
-                {timeOptions.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setStartTime(t)}
-                    className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                      startTime === t
-                        ? "bg-primary text-white border-primary"
-                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              // 빈 시간 → 기존 time input
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            )}
+            <div className="flex gap-1.5 flex-wrap">
+              {timeOptions.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setStartTime(t)}
+                  className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                    startTime === t
+                      ? "bg-primary text-white border-primary"
+                      : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* 수업 시간 */}
