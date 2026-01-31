@@ -274,22 +274,34 @@ export function UnifiedInput({
     }
   }, [value]);
 
-  // 단일 줄 모드
+  // 단일 줄 모드 (포커스 안 됨) - 모바일 호환: 실제 input을 사용
   if (mode === "single" && !isFocused) {
     return (
       <div className="px-4 pb-3">
         <div className="max-w-3xl mx-auto">
-          <div
-            className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-accent/30 hover:bg-accent/50 hover:shadow cursor-text transition-all"
-            onClick={() => {
-              setIsFocused(true);
-              setTimeout(() => inputRef.current?.focus(), 50);
-            }}
-          >
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-accent/30 hover:bg-accent/50 hover:shadow transition-all">
             <span className="text-muted-foreground text-lg">+</span>
-            <span className="text-muted-foreground text-sm">{placeholder}</span>
+            {/* 모바일 호환: 터치 시 바로 키보드가 뜨도록 실제 input 사용 */}
+            <input
+              ref={inputRef}
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              onPaste={handlePaste}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              placeholder={placeholder}
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+              // 모바일에서 터치 시 즉시 포커스되도록
+              enterKeyHint="done"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
             <button
-              className="ml-auto p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
+              className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
               onClick={(e) => {
                 e.stopPropagation();
                 expandToFullPage();
@@ -332,6 +344,12 @@ export function UnifiedInput({
               placeholder={placeholder}
               className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
               autoFocus
+              // 모바일 호환성
+              enterKeyHint="done"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
             <button
               className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
@@ -413,6 +431,12 @@ export function UnifiedInput({
               }`}
               rows={mode === "full" ? 10 : 3}
               autoFocus
+              // 모바일 호환성
+              enterKeyHint="done"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
 
             {/* 힌트 */}

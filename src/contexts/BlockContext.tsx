@@ -46,6 +46,7 @@ export interface BlockActions {
 
   // TOP 3
   addToTop3: (blockId: string, slotIndex?: number) => void;
+  addBlockWithTop3: (name: string, slotIndex: number) => string;
   removeFromTop3: (blockId: string) => void;
 
   // 다중 선택
@@ -146,6 +147,7 @@ interface BlockContextValue {
   top3Blocks: Block[];
   top3History: Top3History[];
   addToTop3: (blockId: string, slotIndex?: number) => void;
+  addBlockWithTop3: (name: string, slotIndex: number) => string;
   removeFromTop3: (blockId: string) => void;
 
   // 다중 선택
@@ -193,6 +195,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     togglePin: blockState.togglePin,
     moveToColumn: blockState.moveToColumn,
     addToTop3: blockState.addToTop3,
+    addBlockWithTop3: blockState.addBlockWithTop3,
     removeFromTop3: blockState.removeFromTop3,
     toggleSelectionMode: blockState.toggleSelectionMode,
     toggleBlockSelection: blockState.toggleBlockSelection,
@@ -224,6 +227,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     blockState.togglePin,
     blockState.moveToColumn,
     blockState.addToTop3,
+    blockState.addBlockWithTop3,
     blockState.removeFromTop3,
     blockState.toggleSelectionMode,
     blockState.toggleBlockSelection,

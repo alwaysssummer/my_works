@@ -342,6 +342,56 @@ export function useBlocks() {
     });
   }, []);
 
+  // TOP 3 블록 생성 (블록 + urgent/checkbox 속성 한 번에 추가)
+  const addBlockWithTop3 = useCallback((name: string, slotIndex: number) => {
+    const newBlockId = crypto.randomUUID();
+
+    setBlocks((prev) => {
+      const currentTop3 = prev.filter((b) =>
+        b.properties.some((p) => p.propertyType === "urgent")
+      );
+
+      if (currentTop3.length >= MAX_TOP3) {
+        return prev;
+      }
+
+      const newBlock: Block = {
+        id: newBlockId,
+        name,
+        content: "",
+        indent: 0,
+        isCollapsed: false,
+        isPinned: false,
+        isDeleted: false,
+        column: "inbox",
+        properties: [
+          {
+            id: crypto.randomUUID(),
+            propertyType: "checkbox",
+            name: "체크박스",
+            value: { type: "checkbox" as const, checked: false },
+          },
+          {
+            id: crypto.randomUUID(),
+            propertyType: "urgent",
+            name: "긴급",
+            value: {
+              type: "urgent" as const,
+              addedAt: getKoreanToday(),
+              slotIndex,
+            },
+          },
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      return [newBlock, ...prev];
+    });
+
+    return newBlockId;
+  }, []);
+
   // TOP 3에서 제거
   const removeFromTop3 = useCallback((blockId: string) => {
     setBlocks((prev) =>
@@ -857,6 +907,7 @@ export function useBlocks() {
     top3Blocks,
     top3History,
     addToTop3,
+    addBlockWithTop3,
     removeFromTop3,
     // 다중 선택 관련
     selectedBlockIds,

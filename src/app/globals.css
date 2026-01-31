@@ -135,6 +135,40 @@
   [role="button"] {
     touch-action: manipulation;
   }
+
+  /* 모바일 입력 필드 최적화 */
+  input,
+  textarea {
+    /* iOS에서 확대 방지 (16px 이상이면 확대 안 함) */
+    font-size: 16px;
+    /* 터치 시 즉시 반응 */
+    touch-action: manipulation;
+    /* iOS 스타일 리셋 */
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0;
+  }
+
+  /* contenteditable (Tiptap 에디터) 모바일 최적화 */
+  [contenteditable="true"] {
+    /* iOS에서 확대 방지 */
+    font-size: 16px;
+    /* 터치 시 즉시 반응 */
+    touch-action: manipulation;
+    /* 편집 가능하게 설정 (iOS) */
+    -webkit-user-modify: read-write;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* iOS Safari에서 탭 시 회색 하이라이트 제거 */
+  input,
+  textarea,
+  button,
+  a,
+  [contenteditable="true"] {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 /* 접근성: 모션 감소 설정 존중 */

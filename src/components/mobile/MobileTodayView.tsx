@@ -13,7 +13,7 @@ import {
 import { Plus, Check } from "lucide-react";
 
 export function MobileTodayView() {
-  const { blocks, updateProperty, addProperty, addBlock, addToTop3, softDeleteBlock } = useBlockContext();
+  const { blocks, updateProperty, addProperty, addBlockWithTop3, softDeleteBlock } = useBlockContext();
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
   const [slotInputValue, setSlotInputValue] = useState("");
@@ -145,8 +145,7 @@ export function MobileTodayView() {
   const handleSlotInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, slotIndex: number) => {
     if (e.key === "Enter" && slotInputValue.trim()) {
       e.preventDefault();
-      const blockId = addBlock(undefined, { name: slotInputValue.trim() });
-      addToTop3(blockId, slotIndex);
+      addBlockWithTop3(slotInputValue.trim(), slotIndex);
       setSlotInputValue("");
       setEditingSlot(null);
     }
@@ -154,7 +153,7 @@ export function MobileTodayView() {
       setSlotInputValue("");
       setEditingSlot(null);
     }
-  }, [slotInputValue, addBlock, addToTop3]);
+  }, [slotInputValue, addBlockWithTop3]);
 
   // 슬롯 클릭 핸들러
   const handleEmptySlotClick = useCallback((index: number) => {

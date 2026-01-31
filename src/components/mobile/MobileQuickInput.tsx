@@ -91,6 +91,13 @@ export const MobileQuickInput = forwardRef<HTMLTextAreaElement, MobileQuickInput
         className={`w-full px-4 py-3 pr-12 rounded-xl border border-border bg-background resize-none transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
           isExpanded ? "min-h-[80px]" : "min-h-[48px]"
         }`}
+        // 모바일 호환성 - 터치 시 즉시 키보드 표시
+        enterKeyHint="done"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="sentences"
+        spellCheck={false}
+        inputMode="text"
       />
       <button
         onClick={handleSubmit}
