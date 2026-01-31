@@ -18,10 +18,12 @@ function blockToDb(block: Block, sortOrder: number) {
     indent: block.indent,
     is_collapsed: block.isCollapsed,
     is_pinned: block.isPinned,
+    is_deleted: block.isDeleted,
     column: block.column,
     properties: block.properties,
     sort_order: sortOrder,
     updated_at: new Date().toISOString(),
+    deleted_at: block.deletedAt?.toISOString(),
   };
 }
 
@@ -34,10 +36,12 @@ function dbToBlock(row: any): Block {
     indent: row.indent || 0,
     isCollapsed: row.is_collapsed || false,
     isPinned: row.is_pinned || false,
+    isDeleted: row.is_deleted || false,
     column: row.column || "inbox",
     properties: row.properties || [],
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+    deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
   };
 }
 

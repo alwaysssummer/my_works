@@ -41,10 +41,12 @@ function dbToBlock(row: any): Block {
     indent: row.indent || 0,
     isCollapsed: row.is_collapsed || false,
     isPinned: row.is_pinned || false,
+    isDeleted: row.is_deleted || false,
     column: row.column || "inbox",
     properties: (row.properties || []).map(migrateProperty),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+    deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
   };
 }
 
@@ -57,10 +59,12 @@ function blockToDb(block: Block, sortOrder: number) {
     indent: block.indent,
     is_collapsed: block.isCollapsed,
     is_pinned: block.isPinned,
+    is_deleted: block.isDeleted,
     column: block.column,
     properties: block.properties,
     sort_order: sortOrder,
     updated_at: new Date().toISOString(),
+    deleted_at: block.deletedAt?.toISOString(),
   };
 }
 
@@ -372,6 +376,7 @@ export function useBlocks() {
           indent: inheritedIndent,
           isCollapsed: false,
           isPinned: false,
+          isDeleted: false,
           column: "inbox",
           properties: [],
           createdAt: new Date(),
@@ -389,6 +394,7 @@ export function useBlocks() {
           indent: inheritedIndent,
           isCollapsed: false,
           isPinned: false,
+          isDeleted: false,
           column: "inbox",
           properties: [],
           createdAt: new Date(),
@@ -406,6 +412,7 @@ export function useBlocks() {
         indent: inheritedIndent,
         isCollapsed: false,
         isPinned: false,
+        isDeleted: false,
         column: inheritedColumn,
         properties: [],
         createdAt: new Date(),
@@ -430,8 +437,35 @@ export function useBlocks() {
     );
   }, []);
 
-  // 블록 삭제
+  // 블록 삭제 (영구 삭제)
   const deleteBlock = useCallback((id: string) => {
+    setBlocks((prev) => prev.filter((b) => b.id !== id));
+  }, []);
+
+  // 소프트 삭제 (휴지통으로 이동)
+  const softDeleteBlock = useCallback((id: string) => {
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.id === id
+          ? { ...block, isDeleted: true, deletedAt: new Date(), updatedAt: new Date() }
+          : block
+      )
+    );
+  }, []);
+
+  // 복원 (휴지통에서 꺼내기)
+  const restoreBlock = useCallback((id: string) => {
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.id === id
+          ? { ...block, isDeleted: false, deletedAt: undefined, updatedAt: new Date() }
+          : block
+      )
+    );
+  }, []);
+
+  // 영구 삭제 (완전 제거)
+  const permanentDeleteBlock = useCallback((id: string) => {
     setBlocks((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
@@ -795,6 +829,9 @@ export function useBlocks() {
     addBlock,
     updateBlock,
     deleteBlock,
+    softDeleteBlock,
+    restoreBlock,
+    permanentDeleteBlock,
     indentBlock,
     outdentBlock,
     toggleCollapse,

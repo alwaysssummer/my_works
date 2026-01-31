@@ -11,6 +11,9 @@ export interface BlockActions {
   addBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   updateBlock: (id: string, content: string) => void;
   deleteBlock: (id: string) => void;
+  softDeleteBlock: (id: string) => void;
+  restoreBlock: (id: string) => void;
+  permanentDeleteBlock: (id: string) => void;
 
   // 들여쓰기
   indentBlock: (id: string) => void;
@@ -100,6 +103,9 @@ interface BlockContextValue {
   addBlock: (afterId?: string, options?: { name?: string; content?: string }) => string;
   updateBlock: (id: string, content: string) => void;
   deleteBlock: (id: string) => void;
+  softDeleteBlock: (id: string) => void;
+  restoreBlock: (id: string) => void;
+  permanentDeleteBlock: (id: string) => void;
 
   // 들여쓰기
   indentBlock: (id: string) => void;
@@ -166,6 +172,9 @@ export function BlockProvider({ children }: BlockProviderProps) {
     addBlock: blockState.addBlock,
     updateBlock: blockState.updateBlock,
     deleteBlock: blockState.deleteBlock,
+    softDeleteBlock: blockState.softDeleteBlock,
+    restoreBlock: blockState.restoreBlock,
+    permanentDeleteBlock: blockState.permanentDeleteBlock,
     indentBlock: blockState.indentBlock,
     outdentBlock: blockState.outdentBlock,
     toggleCollapse: blockState.toggleCollapse,
@@ -194,6 +203,9 @@ export function BlockProvider({ children }: BlockProviderProps) {
     blockState.addBlock,
     blockState.updateBlock,
     blockState.deleteBlock,
+    blockState.softDeleteBlock,
+    blockState.restoreBlock,
+    blockState.permanentDeleteBlock,
     blockState.indentBlock,
     blockState.outdentBlock,
     blockState.toggleCollapse,

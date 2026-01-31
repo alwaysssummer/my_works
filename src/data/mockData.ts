@@ -56,6 +56,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "focus",
     properties: [
       { id: "prop-1-1", propertyType: "checkbox", name: "완료", value: { type: "checkbox", checked: false } },
@@ -73,6 +74,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "focus",
     properties: [
       { id: "prop-3-1", propertyType: "checkbox", name: "완료", value: { type: "checkbox", checked: false } },
@@ -92,6 +94,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "queue",
     properties: [
       { id: "prop-2-1", propertyType: "checkbox", name: "완료", value: { type: "checkbox", checked: true } },
@@ -108,6 +111,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "queue",
     properties: [
       { id: "prop-4-1", propertyType: "checkbox", name: "완료", value: { type: "checkbox", checked: false } },
@@ -127,6 +131,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "inbox",
     properties: [
       { id: "prop-5-1", propertyType: "date", name: "날짜", value: { type: "date", date: nextWeek } },
@@ -142,6 +147,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "inbox",
     properties: [],
     createdAt: new Date(),
@@ -154,6 +160,7 @@ export const mockBlocks: Block[] = [
     indent: 0,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column: "inbox",
     properties: [
       { id: "prop-7-1", propertyType: "priority", name: "우선순위", value: { type: "priority", level: "high" } },

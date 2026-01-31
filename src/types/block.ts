@@ -13,10 +13,12 @@ export interface Block {
   indent: number; // 들여쓰기 레벨 (0, 1, 2, ...)
   isCollapsed: boolean; // 접힘 상태
   isPinned: boolean; // 고정 상태 (상단에 표시)
+  isDeleted: boolean; // 소프트 삭제 상태 (휴지통)
   column: BlockColumn; // 블록이 위치하는 열
   properties: BlockProperty[]; // 블록에 연결된 속성들
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date; // 삭제된 시간 (복원/영구삭제 참조용)
 }
 
 // 블록 표시 이름 가져오기 (name 없으면 content 첫줄)
@@ -49,6 +51,7 @@ export function createBlock(content: string = "", indent: number = 0, column: Bl
     indent,
     isCollapsed: false,
     isPinned: false,
+    isDeleted: false,
     column,
     properties: [],
     createdAt: now,

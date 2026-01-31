@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useBlockContext } from "@/contexts/BlockContext";
 import { MobileQuickInput } from "./MobileQuickInput";
 import { MobileBlockCard } from "./MobileBlockCard";
@@ -13,45 +13,53 @@ import {
 import { Plus, Check } from "lucide-react";
 
 export function MobileTodayView() {
-  const { blocks, updateProperty } = useBlockContext();
+  const { blocks, updateProperty, addProperty, addBlock, addToTop3, softDeleteBlock } = useBlockContext();
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [editingSlot, setEditingSlot] = useState<number | null>(null);
+  const [slotInputValue, setSlotInputValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const slotInputRef = useRef<HTMLInputElement>(null);
 
   const today = getKoreanToday();
 
   // 화면 로드시 입력창 자동 포커스
   useEffect(() => {
-    // 약간의 딜레이 후 포커스 (모바일 키보드 이슈 방지)
     const timer = setTimeout(() => {
       inputRef.current?.focus();
     }, 300);
     return () => clearTimeout(timer);
   }, []);
 
-  // TOP 3 (우선순위 high + 체크박스 미완료, 최대 3개)
-  const top3Blocks = useMemo(() => {
-    return blocks
-      .filter((block) => {
-        const hasPriority = block.properties.some(
-          (p) =>
-            p.propertyType === "priority" &&
-            p.value.type === "priority" &&
-            p.value.level === "high"
-        );
-        const hasUncheckedCheckbox = block.properties.some(
-          (p) =>
-            p.propertyType === "checkbox" &&
-            p.value.type === "checkbox" &&
-            !p.value.checked
-        );
-        return hasPriority && hasUncheckedCheckbox;
-      })
-      .slice(0, 3);
+  // 슬롯 입력 모드시 포커스
+  useEffect(() => {
+    if (editingSlot !== null) {
+      slotInputRef.current?.focus();
+    }
+  }, [editingSlot]);
+
+  // 삭제되지 않은 활성 블록만 필터링
+  const activeBlocks = useMemo(() => {
+    return blocks.filter((b) => !b.isDeleted);
   }, [blocks]);
+
+  // TOP 3 (urgent 속성 기반, 슬롯 인덱스 정렬)
+  const top3Blocks = useMemo(() => {
+    return activeBlocks
+      .filter((block) =>
+        block.properties.some((p) => p.propertyType === "urgent")
+      )
+      .sort((a, b) => {
+        const urgentA = a.properties.find((p) => p.propertyType === "urgent");
+        const urgentB = b.properties.find((p) => p.propertyType === "urgent");
+        const slotA = urgentA?.value.type === "urgent" ? urgentA.value.slotIndex : 0;
+        const slotB = urgentB?.value.type === "urgent" ? urgentB.value.slotIndex : 0;
+        return slotA - slotB;
+      });
+  }, [activeBlocks]);
 
   // 오늘 마감 (person 속성 없는 오늘 날짜 블록)
   const todayDeadlines = useMemo(() => {
-    return blocks.filter((block) => {
+    return activeBlocks.filter((block) => {
       const dateProp = block.properties.find((p) => p.propertyType === "date");
       const hasPerson = block.properties.some(
         (p) => p.propertyType === "person"
@@ -62,11 +70,11 @@ export function MobileTodayView() {
         !hasPerson
       );
     });
-  }, [blocks, today]);
+  }, [activeBlocks, today]);
 
   // 오늘 수업 (person 속성 + 오늘 날짜)
   const todayLessons = useMemo(() => {
-    return blocks
+    return activeBlocks
       .filter((block) => {
         const dateProp = block.properties.find((p) => p.propertyType === "date");
         const hasPerson = block.properties.some((p) => p.propertyType === "person");
@@ -84,25 +92,25 @@ export function MobileTodayView() {
         }
         return 0;
       });
-  }, [blocks, today]);
+  }, [activeBlocks, today]);
 
   // 최근 기록 (최신순, 20개)
   const recentBlocks = useMemo(() => {
-    return [...blocks]
+    return [...activeBlocks]
       .sort((a, b) => {
         const aTime = new Date(a.updatedAt || a.createdAt).getTime();
         const bTime = new Date(b.updatedAt || b.createdAt).getTime();
         return bTime - aTime;
       })
       .slice(0, 20);
-  }, [blocks]);
+  }, [activeBlocks]);
 
   const selectedBlock = selectedBlockId
     ? blocks.find((b) => b.id === selectedBlockId)
     : null;
 
   // TOP 3 체크박스 토글
-  const handleTop3Toggle = (blockId: string) => {
+  const handleTop3Toggle = useCallback((blockId: string) => {
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
 
@@ -115,7 +123,49 @@ export function MobileTodayView() {
         checked: !checkboxProp.value.checked,
       });
     }
-  };
+  }, [blocks, updateProperty]);
+
+  // 오늘 수업 체크박스 토글
+  const handleLessonCheckboxToggle = useCallback((blockId: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const checkboxProp = block.properties.find((p) => p.propertyType === "checkbox");
+    if (checkboxProp && checkboxProp.value.type === "checkbox") {
+      updateProperty(blockId, checkboxProp.id, {
+        type: "checkbox",
+        checked: !checkboxProp.value.checked,
+      });
+    } else {
+      addProperty(blockId, "checkbox", "완료", { type: "checkbox", checked: true });
+    }
+  }, [blocks, updateProperty, addProperty]);
+
+  // TOP 3 슬롯 입력 핸들러
+  const handleSlotInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, slotIndex: number) => {
+    if (e.key === "Enter" && slotInputValue.trim()) {
+      e.preventDefault();
+      const blockId = addBlock(undefined, { name: slotInputValue.trim() });
+      addToTop3(blockId, slotIndex);
+      setSlotInputValue("");
+      setEditingSlot(null);
+    }
+    if (e.key === "Escape") {
+      setSlotInputValue("");
+      setEditingSlot(null);
+    }
+  }, [slotInputValue, addBlock, addToTop3]);
+
+  // 슬롯 클릭 핸들러
+  const handleEmptySlotClick = useCallback((index: number) => {
+    setEditingSlot(index);
+    setSlotInputValue("");
+  }, []);
+
+  // 삭제 핸들러
+  const handleDelete = useCallback((blockId: string) => {
+    softDeleteBlock(blockId);
+  }, [softDeleteBlock]);
 
   if (selectedBlock) {
     return (
@@ -185,10 +235,34 @@ export function MobileTodayView() {
                   </button>
                 );
               }
+              // 빈 슬롯: 인라인 입력 또는 + 버튼
+              if (editingSlot === index) {
+                return (
+                  <div
+                    key={`empty-${index}`}
+                    className="p-2 rounded-lg border border-primary/30 bg-primary/5 min-h-[52px]"
+                  >
+                    <input
+                      ref={slotInputRef}
+                      type="text"
+                      value={slotInputValue}
+                      onChange={(e) => setSlotInputValue(e.target.value)}
+                      onKeyDown={(e) => handleSlotInputKeyDown(e, index)}
+                      onBlur={() => {
+                        setEditingSlot(null);
+                        setSlotInputValue("");
+                      }}
+                      placeholder="할 일 입력..."
+                      className="w-full text-xs bg-transparent outline-none placeholder:text-muted-foreground/50"
+                      autoFocus
+                    />
+                  </div>
+                );
+              }
               return (
                 <button
                   key={`empty-${index}`}
-                  onClick={() => inputRef.current?.focus()}
+                  onClick={() => handleEmptySlotClick(index)}
                   className="p-2 rounded-lg border border-dashed border-border/50 flex items-center justify-center min-h-[52px] hover:bg-muted/30 transition-colors active:scale-95"
                 >
                   <Plus className="w-4 h-4 text-muted-foreground/50" />
@@ -216,6 +290,7 @@ export function MobileTodayView() {
                   variant="deadline"
                   badge="D-day"
                   onClick={() => setSelectedBlockId(block.id)}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>
@@ -249,6 +324,9 @@ export function MobileTodayView() {
                     time={time}
                     variant="lesson"
                     onClick={() => setSelectedBlockId(block.id)}
+                    showCheckbox={true}
+                    onCheckboxToggle={handleLessonCheckboxToggle}
+                    onDelete={handleDelete}
                   />
                 );
               })}
@@ -269,6 +347,7 @@ export function MobileTodayView() {
                   key={block.id}
                   block={block}
                   onClick={() => setSelectedBlockId(block.id)}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>
