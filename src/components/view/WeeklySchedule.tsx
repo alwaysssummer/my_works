@@ -989,11 +989,11 @@ function AddLessonModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4"
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="font-semibold text-lg mb-4">
@@ -1098,18 +1098,24 @@ function AddLessonModal({
           </div>
 
           {/* 매주 반복 (정규 수업) */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="isRegular"
-              checked={isRegular}
-              onChange={(e) => setIsRegular(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20"
-            />
-            <label htmlFor="isRegular" className="text-sm text-gray-700">
+          <button
+            type="button"
+            onClick={() => setIsRegular(!isRegular)}
+            className="flex items-center gap-2 cursor-pointer"
+          >
+            <span
+              className={`w-5 h-5 border-2 rounded flex items-center justify-center ${
+                isRegular
+                  ? "bg-gray-900 border-gray-900 text-white"
+                  : "bg-white border-gray-400"
+              }`}
+            >
+              {isRegular && "✓"}
+            </span>
+            <span className="text-sm text-gray-700">
               매주 반복 (정규 수업)
-            </label>
-          </div>
+            </span>
+          </button>
         </div>
 
         {/* 버튼 */}

@@ -179,39 +179,61 @@ export function useBlocks() {
         }
       }
 
-      // 먼저 Supabase에서 시도 (useBlockSync 사용)
+      // Supabase에서 시도 (useBlockSync 사용)
       const supabaseBlocks = await loadFromSupabase();
 
-      if (supabaseBlocks && supabaseBlocks.length > 0) {
+      // 로컬 스토리지에서도 로드
+      const localBlocks = loadFromLocalStorage();
+
+      // 데이터 소스 결정: Supabase vs localStorage
+      // 1. Supabase 미설정 → localStorage 사용
+      // 2. Supabase 빈 상태 & localStorage 있음 → localStorage 사용 (초기 마이그레이션)
+      // 3. 둘 다 있으면 → 더 최신 데이터 사용
+      let blocksToUse: Block[] = [];
+      let sourceType: 'supabase' | 'localStorage' | 'mock' = 'mock';
+
+      if (supabaseBlocks !== null && supabaseBlocks.length > 0 && localBlocks.length > 0) {
+        // 둘 다 데이터가 있음 → 가장 최근 updatedAt 비교
+        const supabaseLatest = Math.max(...supabaseBlocks.map(b => new Date(b.updatedAt).getTime()));
+        const localLatest = Math.max(...localBlocks.map(b => new Date(b.updatedAt).getTime()));
+
+        if (localLatest > supabaseLatest) {
+          console.log("localStorage가 더 최신 - localStorage 사용");
+          blocksToUse = localBlocks;
+          sourceType = 'localStorage';
+          setUseSupabase(true); // Supabase 연결은 유지
+        } else {
+          console.log("Supabase에서 블록 로드:", supabaseBlocks.length);
+          blocksToUse = supabaseBlocks;
+          sourceType = 'supabase';
+          setUseSupabase(true);
+        }
+      } else if (supabaseBlocks !== null && supabaseBlocks.length > 0) {
+        // Supabase만 데이터 있음
         console.log("Supabase에서 블록 로드:", supabaseBlocks.length);
+        blocksToUse = supabaseBlocks;
+        sourceType = 'supabase';
         setUseSupabase(true);
-
-        // 레거시 속성 마이그레이션 적용
-        const migratedBlocks = supabaseBlocks.map((block: Block) => ({
-          ...block,
-          properties: block.properties.map(migrateProperty),
-        }));
-
-        const processedBlocks = processExpiredTop3(migratedBlocks);
-        setBlocks(processedBlocks);
-        setPrevBlocks(processedBlocks);
-        setIsLoaded(true);
-        return;
-      }
-
-      // Supabase 연결됨 (빈 상태)
-      if (supabaseBlocks !== null) {
+      } else if (localBlocks.length > 0) {
+        // localStorage만 데이터 있음 (또는 Supabase 미설정)
+        console.log("localStorage에서 블록 로드:", localBlocks.length);
+        blocksToUse = localBlocks;
+        sourceType = 'localStorage';
+        if (supabaseBlocks !== null) {
+          // Supabase 연결은 됨 (빈 상태)
+          setUseSupabase(true);
+        }
+      } else if (supabaseBlocks !== null) {
+        // Supabase 연결됨 (빈 상태), localStorage도 없음
         console.log("Supabase 테이블 연결됨 (빈 상태)");
         setUseSupabase(true);
       }
 
-      // 로컬 스토리지에서 로드 (useBlockSync 사용)
-      const localBlocks = loadFromLocalStorage();
-
-      if (localBlocks.length > 0) {
+      // 데이터가 있으면 처리
+      if (blocksToUse.length > 0) {
         let slotCounter = 0;
 
-        let loadedBlocks = localBlocks.map((b: Block & { properties?: (BlockProperty | LegacyBlockProperty)[] }) => ({
+        let loadedBlocks = blocksToUse.map((b: Block & { properties?: (BlockProperty | LegacyBlockProperty)[] }) => ({
           ...b,
           name: b.name ?? "",
           indent: b.indent ?? 0,
@@ -238,10 +260,13 @@ export function useBlocks() {
         const processedBlocks = processExpiredTop3(loadedBlocks);
         setBlocks(processedBlocks);
         setPrevBlocks(processedBlocks);
-      } else {
-        setBlocks(mockBlocks);
-        setPrevBlocks(mockBlocks);
+        setIsLoaded(true);
+        return;
       }
+
+      // 데이터가 없으면 mock 사용
+      setBlocks(mockBlocks);
+      setPrevBlocks(mockBlocks);
       setIsLoaded(true);
     }
 

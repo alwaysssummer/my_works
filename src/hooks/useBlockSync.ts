@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Block } from "@/types/block";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const STORAGE_KEY = "blocknote-blocks";
 const DEBOUNCE_MS = 500;
@@ -10,6 +10,7 @@ const DEBOUNCE_MS = 500;
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
 // 앱 형식 → DB 형식 변환
+// 참고: Supabase 테이블 스키마에 맞춰 필드 정의
 function blockToDb(block: Block, sortOrder: number) {
   return {
     id: block.id,
@@ -18,12 +19,11 @@ function blockToDb(block: Block, sortOrder: number) {
     indent: block.indent,
     is_collapsed: block.isCollapsed,
     is_pinned: block.isPinned,
-    is_deleted: block.isDeleted,
     column: block.column,
     properties: block.properties,
     sort_order: sortOrder,
     updated_at: new Date().toISOString(),
-    deleted_at: block.deletedAt?.toISOString(),
+    // is_deleted, deleted_at은 테이블에 없으므로 제외 (로컬에서만 관리)
   };
 }
 
@@ -74,6 +74,12 @@ export function useBlockSync() {
 
   // Supabase 연결 확인
   const checkSupabaseConnection = useCallback(async () => {
+    // 환경변수가 없으면 연결 시도하지 않음
+    if (!isSupabaseConfigured() || !supabase) {
+      setIsSupabaseConnected(false);
+      return false;
+    }
+
     try {
       const { error } = await supabase
         .from("blocks")
@@ -135,8 +141,15 @@ export function useBlockSync() {
     setSyncStatus('syncing');
     setLastError(null);
 
-    // 항상 로컬 스토리지에 저장
+    // 항상 로컬 스토리지에 저장 (가장 먼저)
     saveToLocalStorage(blocks);
+
+    // Supabase가 설정되지 않았으면 로컬만 저장
+    if (!isSupabaseConfigured() || !supabase) {
+      prevBlocksRef.current = blocks;
+      setSyncStatus('synced');
+      return;
+    }
 
     // 오프라인이면 로컬만 저장
     if (!isOnline && !force) {
@@ -161,6 +174,7 @@ export function useBlockSync() {
           .upsert(dbBlocks, { onConflict: 'id' });
 
         if (upsertError) {
+          console.error("Supabase upsert 실패:", upsertError.message);
           setSyncStatus('error');
           setLastError(upsertError.message);
           return;
@@ -176,6 +190,7 @@ export function useBlockSync() {
           .in('id', deletedIds);
 
         if (deleteError) {
+          console.error("Supabase delete 실패:", deleteError.message);
           setSyncStatus('error');
           setLastError(deleteError.message);
           return;
@@ -186,6 +201,7 @@ export function useBlockSync() {
       prevBlocksRef.current = blocks;
       setSyncStatus('synced');
     } catch (err) {
+      console.error("Supabase 동기화 실패:", err);
       setSyncStatus('error');
       setLastError(err instanceof Error ? err.message : '알 수 없는 오류');
     }
@@ -204,6 +220,13 @@ export function useBlockSync() {
 
   // Supabase에서 블록 로드
   const loadFromSupabase = useCallback(async (): Promise<Block[] | null> => {
+    // Supabase가 설정되지 않았으면 null 반환 (localStorage 사용)
+    if (!isSupabaseConfigured() || !supabase) {
+      console.log("Supabase 미설정 - localStorage 모드");
+      setIsSupabaseConnected(false);
+      return null;
+    }
+
     try {
       const { data, error } = await supabase
         .from("blocks")
