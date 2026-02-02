@@ -8,11 +8,12 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
+import Details, { DetailsSummary, DetailsContent } from "@tiptap/extension-details";
 import { Block, getBlockDisplayName } from "@/types/block";
 import { DEFAULT_PROPERTIES, PropertyType, Tag, PRIORITY_COLORS, PRIORITY_LABELS, PriorityLevel, RepeatConfig, REPEAT_LABELS, BlockProperty } from "@/types/property";
 import { BlockType } from "@/types/blockType";
 import { SlashMenu } from "./SlashMenu";
-import { saveImage, getImage } from "@/lib/imageStorage";
+import { saveImage, getImage, restoreImagesInContent } from "@/lib/imageStorage";
 import { parseBlockContent } from "@/lib/blockParser";
 import {
   getPropertyByType,
@@ -93,6 +94,7 @@ export function BlockItem({
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashPosition, setSlashPosition] = useState({ top: 0, left: 0 });
+  const [imagesRestored, setImagesRestored] = useState(false);
 
   // 속성 추출 (헬퍼 함수 사용)
   const checkboxProperty = getPropertyByType(block, "checkbox");
@@ -192,6 +194,15 @@ export function BlockItem({
       TableRow,
       TableCell,
       TableHeader,
+      // 토글(접기/펼치기) 익스텐션
+      Details.configure({
+        persist: true,
+        HTMLAttributes: {
+          class: "details-toggle",
+        },
+      }),
+      DetailsSummary,
+      DetailsContent,
     ],
     content: block.content,
     editorProps: {
@@ -339,7 +350,7 @@ export function BlockItem({
 
       // 슬래시 명령어 감지
       const text = editor.getText();
-      const slashMatch = text.match(/\/(\w*)$/);
+      const slashMatch = text.match(/\/([\w가-힣]*)$/);
 
       if (slashMatch) {
         const query = slashMatch[1] || "";
@@ -371,11 +382,29 @@ export function BlockItem({
     }
   }, [isFocused, editor]);
 
+  // 에디터 내용 동기화 + 이미지 복원
   useEffect(() => {
-    if (editor && block.content !== editor.getHTML()) {
-      editor.commands.setContent(block.content);
-    }
-  }, [block.content, editor]);
+    if (!editor) return;
+
+    const restoreAndSetContent = async () => {
+      const hasImages = block.content.includes('alt="image-');
+
+      if (hasImages && !imagesRestored) {
+        const restoredContent = await restoreImagesInContent(block.content);
+        editor.commands.setContent(restoredContent);
+        setImagesRestored(true);
+      } else if (block.content !== editor.getHTML() && !hasImages) {
+        editor.commands.setContent(block.content);
+      }
+    };
+
+    restoreAndSetContent();
+  }, [block.content, editor, imagesRestored]);
+
+  // 블록 ID가 변경되면 이미지 복원 상태 리셋
+  useEffect(() => {
+    setImagesRestored(false);
+  }, [block.id]);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -515,6 +544,20 @@ export function BlockItem({
     },
     [block.id, editor, onApplyType, onUpdate]
   );
+
+  // 슬래시 메뉴에서 토글 삽입
+  const handleSlashInsertToggle = useCallback(() => {
+    if (editor) {
+      // 슬래시 명령어 제거
+      const html = editor.getHTML();
+      const cleanHtml = html.replace(/\/\w*$/, "").replace(/<p>\s*<\/p>$/, "<p></p>");
+      editor.commands.setContent(cleanHtml);
+      // 토글 삽입
+      editor.chain().focus().setDetails().run();
+      onUpdate(block.id, editor.getHTML());
+    }
+    setShowSlashMenu(false);
+  }, [block.id, editor, onUpdate]);
 
   const handleCloseSlashMenu = useCallback(() => {
     setShowSlashMenu(false);
@@ -915,6 +958,7 @@ export function BlockItem({
           position={slashPosition}
           onAddProperty={handleSlashAddProperty}
           onApplyType={handleSlashApplyType}
+          onInsertToggle={handleSlashInsertToggle}
           onClose={handleCloseSlashMenu}
           blockTypes={blockTypes}
         />

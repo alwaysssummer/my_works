@@ -8,10 +8,11 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
+import Details, { DetailsSummary, DetailsContent } from "@tiptap/extension-details";
 import { Block, BlockColumn, BlockProperty } from "@/types/block";
 import { Tag, PropertyType, PriorityLevel, DEFAULT_PROPERTIES } from "@/types/property";
 import { BlockType } from "@/types/blockType";
-import { saveImage, getImage } from "@/lib/imageStorage";
+import { saveImage, getImage, restoreImagesInContent } from "@/lib/imageStorage";
 import { formatRelativeDate, getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 import {
   getPropertyByType,
@@ -29,6 +30,7 @@ import {
   isStudentBlock as checkIsStudentBlock,
 } from "@/lib/propertyHelpers";
 import { findBacklinksTo, BacklinkRelation } from "@/lib/backlinkParser";
+import { SlashMenu } from "@/components/block/SlashMenu";
 
 interface NoteViewProps {
   block: Block;
@@ -99,6 +101,11 @@ export function NoteView({
   const [showTagInput, setShowTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
+
+  // 슬래시 메뉴 상태
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashPosition, setSlashPosition] = useState({ top: 0, left: 0 });
 
   // 학생 블록 여부 판단 (헬퍼 함수 사용)
   const isStudentBlock = useMemo(() => checkIsStudentBlock(block), [block]);
@@ -192,6 +199,15 @@ export function NoteView({
       TableRow,
       TableCell,
       TableHeader,
+      // 토글(접기/펼치기) 익스텐션
+      Details.configure({
+        persist: true,
+        HTMLAttributes: {
+          class: "details-toggle",
+        },
+      }),
+      DetailsSummary,
+      DetailsContent,
     ],
     content: block.content,
     editorProps: {
@@ -234,16 +250,61 @@ export function NoteView({
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       onUpdateBlock(block.id, html);
+
+      // 슬래시 명령어 감지 (한글 포함)
+      const text = editor.getText();
+      const slashMatch = text.match(/\/([\w가-힣]*)$/);
+
+      if (slashMatch) {
+        const query = slashMatch[1] || "";
+        setSlashQuery(query);
+
+        // 커서 위치 계산
+        const { view } = editor;
+        const { from } = view.state.selection;
+        const coords = view.coordsAtPos(from);
+
+        setSlashPosition({
+          top: coords.bottom + 4,
+          left: coords.left,
+        });
+        setShowSlashMenu(true);
+      } else {
+        setShowSlashMenu(false);
+        setSlashQuery("");
+      }
     },
     autofocus: "end",
   });
 
-  // 에디터 내용 동기화
+  // 이미지 복원 여부 추적
+  const [imagesRestored, setImagesRestored] = useState(false);
+
+  // 에디터 내용 동기화 + 이미지 복원
   useEffect(() => {
-    if (editor && block.content !== editor.getHTML()) {
-      editor.commands.setContent(block.content);
-    }
-  }, [block.content, editor]);
+    if (!editor) return;
+
+    const restoreAndSetContent = async () => {
+      // 이미지가 포함된 콘텐츠인지 확인
+      const hasImages = block.content.includes('alt="image-');
+
+      if (hasImages && !imagesRestored) {
+        // 이미지 URL 복원 (blob: URL이 만료되었을 수 있음)
+        const restoredContent = await restoreImagesInContent(block.content);
+        editor.commands.setContent(restoredContent);
+        setImagesRestored(true);
+      } else if (block.content !== editor.getHTML() && !hasImages) {
+        editor.commands.setContent(block.content);
+      }
+    };
+
+    restoreAndSetContent();
+  }, [block.content, editor, imagesRestored]);
+
+  // 블록이 변경되면 이미지 복원 상태 리셋
+  useEffect(() => {
+    setImagesRestored(false);
+  }, [block.id]);
 
   // 키보드 단축키 (ESC 닫기, Ctrl+Backspace 삭제)
   useEffect(() => {
@@ -448,6 +509,39 @@ export function NoteView({
     [block.id, onRemoveProperty]
   );
 
+  // 슬래시 메뉴에서 속성 추가
+  const handleSlashAddProperty = useCallback(
+    (propertyType: PropertyType) => {
+      if (editor) {
+        const html = editor.getHTML();
+        const cleanHtml = html.replace(/\/\w*$/, "").replace(/<p>\s*<\/p>$/, "<p></p>");
+        editor.commands.setContent(cleanHtml);
+        onUpdateBlock(block.id, cleanHtml);
+      }
+      handleAddProperty(propertyType);
+      setShowSlashMenu(false);
+    },
+    [block.id, editor, handleAddProperty, onUpdateBlock]
+  );
+
+  // 슬래시 메뉴에서 토글 삽입
+  const handleSlashInsertToggle = useCallback(() => {
+    if (editor) {
+      const html = editor.getHTML();
+      const cleanHtml = html.replace(/\/\w*$/, "").replace(/<p>\s*<\/p>$/, "<p></p>");
+      editor.commands.setContent(cleanHtml);
+      editor.chain().focus().setDetails().run();
+      onUpdateBlock(block.id, editor.getHTML());
+    }
+    setShowSlashMenu(false);
+  }, [block.id, editor, onUpdateBlock]);
+
+  // 슬래시 메뉴 닫기
+  const handleCloseSlashMenu = useCallback(() => {
+    setShowSlashMenu(false);
+    setSlashQuery("");
+  }, []);
+
   // 날짜 표시 텍스트
   const getDateDisplayText = () => {
     if (!dateStr) return "";
@@ -468,7 +562,7 @@ export function NoteView({
       />
 
       {/* 모달 콘텐츠 */}
-      <div className="relative z-10 bg-background rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] mx-4 overflow-hidden flex flex-col">
+      <div className="relative z-10 bg-background rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] mx-4 overflow-hidden flex flex-col">
         {/* 클릭 외부 닫기 핸들러 (속성 추가 메뉴용) */}
         {showAddProperty && (
           <div
@@ -477,26 +571,12 @@ export function NoteView({
           />
         )}
 
-        {/* 상단 바 - 간소화 */}
-        <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-background relative z-10">
-          {/* 왼쪽: 빈 영역 */}
-          <div />
-
-          {/* 오른쪽: 닫기 버튼 */}
-          <button
-            onClick={onClose}
-            aria-label="닫기 (ESC)"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span aria-hidden="true">✕</span>
-          </button>
-        </header>
-
         {/* 메인 콘텐츠 - 스크롤 가능 */}
         <main className="flex-1 overflow-auto">
-        <div className="note-view max-w-3xl mx-auto px-16 py-12 min-h-full">
-          {/* 1. 제목 입력 영역 */}
-          <div className="mb-6">
+        <div className="note-view max-w-5xl mx-auto px-8 py-6 min-h-full">
+          {/* 통합 헤더: 제목 | 속성버튼 | + | X */}
+          <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
+            {/* 제목 (flex-1) */}
             <input
               ref={nameInputRef}
               type="text"
@@ -511,28 +591,61 @@ export function NoteView({
                 }
               }}
               placeholder={isStudentBlock ? "학생 이름을 입력하세요" : "제목을 입력하세요..."}
-              className="w-full text-3xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
+              className="flex-1 text-2xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
             />
             {isStudentBlock && (
-              <p className="text-xs text-muted-foreground mt-1">○ 학생</p>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">○ 학생</span>
             )}
+
+            {/* 속성 드롭다운 버튼 */}
+            <button
+              onClick={() => setIsPropertyExpanded(!isPropertyExpanded)}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
+            >
+              <span>{isPropertyExpanded ? "▾" : "▸"}</span>
+              <span>속성 ({propertyCount})</span>
+            </button>
+
+            {/* 속성 추가 버튼 + 드롭다운 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowAddProperty(!showAddProperty)}
+                aria-label="속성 추가"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
+              >
+                <span aria-hidden="true">+</span>
+              </button>
+              {showAddProperty && (
+                <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[160px]">
+                  {allPropertyTypes.map((prop) => (
+                    <button
+                      key={prop.id}
+                      onClick={() => handleAddProperty(prop.type)}
+                      className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2"
+                    >
+                      <span>{prop.icon}</span>
+                      {prop.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 닫기 버튼 */}
+            <button
+              onClick={onClose}
+              aria-label="닫기 (ESC)"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
           </div>
 
-          {/* 2. 속성 영역 (노션 스타일 - 세로 테이블) */}
-          {(propertyCount > 0 || true) && (
+          {/* 속성 영역 (노션 스타일 - 세로 테이블) */}
+          {isPropertyExpanded && propertyCount > 0 && (
             <div className="mb-6">
-              {/* 속성 헤더 (접기/펼치기) */}
-              <button
-                onClick={() => setIsPropertyExpanded(!isPropertyExpanded)}
-                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2"
-              >
-                <span>{isPropertyExpanded ? "▾" : "▸"}</span>
-                <span>속성 ({propertyCount})</span>
-              </button>
-
               {/* 속성 목록 */}
-              {isPropertyExpanded && (
-                <div className="border border-border rounded-lg divide-y divide-border">
+              <div className="border border-border rounded-lg divide-y divide-border">
                   {/* 체크박스 */}
                   {checkboxProp && (
                     <div className="flex items-center justify-between px-4 py-3 group">
@@ -1192,44 +1305,12 @@ export function NoteView({
                     </div>
                   )}
 
-                  {/* 속성이 없을 때 */}
-                  {propertyCount === 0 && (
-                    <div className="px-4 py-3 text-sm text-muted-foreground">
-                      속성이 없습니다
-                    </div>
-                  )}
                 </div>
-              )}
-
-              {/* 3. 속성 추가 버튼 */}
-              <div className="relative mt-2">
-                <button
-                  onClick={() => setShowAddProperty(!showAddProperty)}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                >
-                  <span>+</span>
-                  <span>속성 추가</span>
-                </button>
-                {showAddProperty && (
-                  <div className="absolute left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[160px]">
-                    {allPropertyTypes.map((prop) => (
-                      <button
-                        key={prop.id}
-                        onClick={() => handleAddProperty(prop.type)}
-                        className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent flex items-center gap-2"
-                      >
-                        <span>{prop.icon}</span>
-                        {prop.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           )}
 
-          {/* 4. 구분선 */}
-          <hr className="border-border my-6" />
+          {/* 4. 구분선 - 속성이 있을 때만 표시 */}
+          {propertyCount > 0 && <hr className="border-border my-6" />}
 
           {/* 5. 백링크 섹션 */}
           {backlinkBlocks.length > 0 && (
@@ -1269,29 +1350,44 @@ export function NoteView({
             </div>
           )}
 
-          {/* 6. 구분선 */}
-          <hr className="border-border my-6" />
+          {/* 6. 구분선 - 백링크가 있을 때만 표시 */}
+          {backlinkBlocks.length > 0 && <hr className="border-border my-6" />}
 
           {/* 7. 본문 (Tiptap 에디터) */}
-          <EditorContent
-            editor={editor}
-            className="prose prose-lg max-w-none
-              prose-headings:font-semibold prose-headings:text-foreground
-              prose-h1:text-3xl prose-h1:mb-6 prose-h1:mt-0
-              prose-h2:text-2xl prose-h2:mb-4
-              prose-h3:text-xl prose-h3:mb-3
-              prose-p:text-foreground prose-p:leading-relaxed prose-p:mb-4
-              prose-ul:my-4 prose-ol:my-4
-              prose-li:my-1 prose-li:text-foreground
-              prose-blockquote:border-l-4 prose-blockquote:border-muted-foreground/30
-              prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
-              prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm
-              prose-pre:bg-muted prose-pre:p-4 prose-pre:rounded-lg
-              prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-              prose-strong:text-foreground prose-strong:font-semibold
-              prose-em:text-foreground
-              [&_*:focus]:outline-none"
-          />
+          <div className="relative">
+            <EditorContent
+              editor={editor}
+              className="prose prose-lg max-w-none
+                prose-headings:font-semibold prose-headings:text-foreground
+                prose-h1:text-3xl prose-h1:mb-6 prose-h1:mt-0
+                prose-h2:text-2xl prose-h2:mb-4
+                prose-h3:text-xl prose-h3:mb-3
+                prose-p:text-foreground prose-p:leading-relaxed prose-p:mb-4
+                prose-ul:my-4 prose-ol:my-4
+                prose-li:my-1 prose-li:text-foreground
+                prose-blockquote:border-l-4 prose-blockquote:border-muted-foreground/30
+                prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
+                prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm
+                prose-pre:bg-muted prose-pre:p-4 prose-pre:rounded-lg
+                prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                prose-strong:text-foreground prose-strong:font-semibold
+                prose-em:text-foreground
+                [&_*:focus]:outline-none"
+            />
+
+            {/* 슬래시 명령어 메뉴 */}
+            {showSlashMenu && (
+              <SlashMenu
+                query={slashQuery}
+                position={slashPosition}
+                onAddProperty={handleSlashAddProperty}
+                onApplyType={() => {}}
+                onInsertToggle={handleSlashInsertToggle}
+                onClose={handleCloseSlashMenu}
+                blockTypes={blockTypes}
+              />
+            )}
+          </div>
         </div>
         </main>
 

@@ -17,6 +17,7 @@ interface SlashMenuProps {
   position: { top: number; left: number };
   onAddProperty: (propertyType: PropertyType) => void;
   onApplyType: (typeId: string) => void;
+  onInsertToggle?: () => void;
   onClose: () => void;
   blockTypes: BlockType[];
 }
@@ -26,6 +27,7 @@ export function SlashMenu({
   position,
   onAddProperty,
   onApplyType,
+  onInsertToggle,
   onClose,
   blockTypes,
 }: SlashMenuProps) {
@@ -34,6 +36,17 @@ export function SlashMenu({
   // 메뉴 항목 생성
   const menuItems: SlashMenuItem[] = useMemo(() => {
     const items: SlashMenuItem[] = [];
+
+    // 토글(접기/펼치기) 명령어 - 최상단에 배치
+    if (onInsertToggle) {
+      items.push({
+        id: "toggle",
+        icon: "▶",
+        name: "토글",
+        description: "접기/펼치기 토글 블록 삽입",
+        action: () => onInsertToggle(),
+      });
+    }
 
     // 속성 추가 명령어
     DEFAULT_PROPERTIES.forEach((prop) => {
@@ -58,7 +71,7 @@ export function SlashMenu({
     });
 
     return items;
-  }, [onAddProperty, onApplyType, blockTypes]);
+  }, [onAddProperty, onApplyType, onInsertToggle, blockTypes]);
 
   // 검색 필터링
   const filteredItems = useMemo(() => {

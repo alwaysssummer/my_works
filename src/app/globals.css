@@ -399,3 +399,71 @@
 .dark .prose th {
   background: #1f2937;
 }
+
+/* Tiptap Details (토글) Styles */
+.tiptap details,
+.ProseMirror details,
+.prose details {
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+}
+
+.tiptap details summary,
+.ProseMirror details summary,
+.prose details summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.25rem 0;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tiptap details summary::before,
+.ProseMirror details summary::before,
+.prose details summary::before {
+  content: "▶";
+  display: inline-block;
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tiptap details[open] summary::before,
+.ProseMirror details[open] summary::before,
+.prose details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+/* Safari/WebKit의 기본 marker 숨기기 */
+.tiptap details summary::-webkit-details-marker,
+.ProseMirror details summary::-webkit-details-marker,
+.prose details summary::-webkit-details-marker {
+  display: none;
+}
+
+.tiptap details > div,
+.ProseMirror details > div,
+.prose details > div {
+  padding: 0.5rem 0;
+}
+
+/* 토글 호버 효과 */
+.tiptap details summary:hover,
+.ProseMirror details summary:hover,
+.prose details summary:hover {
+  background-color: var(--accent);
+  border-radius: 0.25rem;
+  margin-left: -0.5rem;
+  padding-left: 0.5rem;
+}
+
+/* 다크 모드 토글 */
+.dark .tiptap details,
+.dark .ProseMirror details,
+.dark .prose details {
+  border-left-color: var(--border);
+}
