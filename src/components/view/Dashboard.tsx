@@ -2,12 +2,13 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Block, Top3History } from "@/types/block";
-import { X, Plus, ChevronRight, Clock, Flame, Search } from "lucide-react";
+import { X, Plus, ChevronLeft, ChevronRight, Clock, Flame, Search } from "lucide-react";
 import { parseBlockContent, getBlockTitle } from "@/lib/blockParser";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { formatDateWithWeekday, getKoreanNow, getKoreanToday, toKoreanDateString, calculateDday } from "@/lib/dateFormat";
 import { processBlockInput } from "@/lib/blockDefaults";
+import { shouldBlockAppearOnDate } from "@/lib/propertyHelpers";
 
 // TOP 3 선택 모달 컴포넌트
 function Top3SelectorModal({
@@ -106,12 +107,14 @@ export function Dashboard({
   onToggleCheckbox,
   onSelectBlock,
 }: DashboardProps) {
-  const [quickMemo, setQuickMemo] = useState("");
   const [showTop3Selector, setShowTop3Selector] = useState(false);
   // TOP 3 직접 입력 상태
   const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
   const [directInput, setDirectInput] = useState("");
   const directInputRef = useRef<HTMLInputElement>(null);
+
+  // 날짜 이동 상태 (오늘 기준 +/- 일수)
+  const [dateOffset, setDateOffset] = useState(0);
 
   // 입력창 포커스
   useEffect(() => {
@@ -158,6 +161,23 @@ export function Dashboard({
   // 오늘 날짜 (한국 시간)
   const today = getKoreanToday();
 
+  // 선택된 날짜 (오늘 + offset)
+  const selectedDate = useMemo(() => {
+    if (dateOffset === 0) return today;
+    const date = new Date(today);
+    date.setDate(date.getDate() + dateOffset);
+    return toKoreanDateString(date);
+  }, [today, dateOffset]);
+
+  const isSelectedToday = dateOffset === 0;
+
+  // 선택된 날짜의 표시 문자열 (예: "2/4 (화)")
+  const selectedDateLabel = useMemo(() => {
+    const date = new Date(selectedDate);
+    const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+    return `${date.getMonth() + 1}/${date.getDate()} (${dayNames[date.getDay()]})`;
+  }, [selectedDate]);
+
   // 어제 날짜 (한국 시간)
   const yesterday = useMemo(() => {
     const date = new Date(getKoreanToday());
@@ -170,12 +190,9 @@ export function Dashboard({
     return top3History.find((h) => h.date === yesterday);
   }, [top3History, yesterday]);
 
-  // 오늘 일정 - 마감과 수업 분리
+  // 선택 날짜 일정 - 마감과 수업 분리 (반복 일정 포함)
   const todayData = useMemo(() => {
-    const todayBlocks = blocks.filter((block) => {
-      const dateProp = block.properties.find((p) => p.propertyType === "date");
-      return dateProp?.value.type === "date" && dateProp.value.date === today;
-    });
+    const todayBlocks = blocks.filter((block) => shouldBlockAppearOnDate(block, selectedDate));
 
     // 수업 (person 속성이 있는 것) - 시간순 정렬
     const lessons = todayBlocks
@@ -195,7 +212,7 @@ export function Dashboard({
     );
 
     return { lessons, deadlines };
-  }, [blocks, today]);
+  }, [blocks, selectedDate]);
 
   // 다가오는 마감 (오늘 제외, 7일 이내)
   const upcomingDeadlines = useMemo(() => {
@@ -228,18 +245,13 @@ export function Dashboard({
     return blocks.filter((b) => !top3Ids.has(b.id) && b.content.trim());
   }, [blocks, top3Blocks]);
 
-  // 빠른 메모 추가
-  const handleQuickMemoSubmit = () => {
-    if (!quickMemo.trim()) return;
-    // 입력 처리 (name/content 분할)
-    const processed = processBlockInput(quickMemo.trim());
-    // 새 블록 생성 (name/content를 옵션으로 전달하여 동기적으로 설정)
-    onAddBlock(undefined, {
-      name: processed.name,
-      content: processed.content,
-    });
-    setQuickMemo("");
-  };
+  // 최근 블록 (updatedAt 기준 내림차순, 삭제 제외, 최대 5개)
+  const recentBlocks = useMemo(() => {
+    return blocks
+      .filter((b) => !b.isDeleted && b.content.trim())
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 5);
+  }, [blocks]);
 
   // 블록 내용에서 텍스트만 추출
   const getPlainText = (html: string) => {
@@ -500,21 +512,52 @@ export function Dashboard({
 
         {/* 오늘 일정 섹션 */}
         <section>
-          <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-5 h-5 text-blue-500" />
-            <h2 className="text-lg font-semibold">오늘 일정</h2>
-            <span className="text-sm text-muted-foreground">
-              ({todayData.deadlines.length + todayData.lessons.length}건)
-            </span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-blue-500" />
+              <h2 className="text-lg font-semibold">
+                {isSelectedToday ? "오늘 일정" : `${selectedDateLabel} 일정`}
+              </h2>
+              <span className="text-sm text-muted-foreground">
+                ({todayData.deadlines.length + todayData.lessons.length}건)
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {!isSelectedToday && (
+                <button
+                  onClick={() => setDateOffset(0)}
+                  className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  오늘
+                </button>
+              )}
+              <button
+                onClick={() => setDateOffset((prev) => prev - 1)}
+                aria-label="이전 날짜"
+                className="p-1.5 rounded-lg hover:bg-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium min-w-[80px] text-center">
+                {selectedDateLabel}
+              </span>
+              <button
+                onClick={() => setDateOffset((prev) => prev + 1)}
+                aria-label="다음 날짜"
+                className="p-1.5 rounded-lg hover:bg-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {todayData.deadlines.length === 0 && todayData.lessons.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              오늘 예정된 일정이 없어요
+              {isSelectedToday ? "오늘 예정된 일정이 없어요" : `${selectedDateLabel}에 예정된 일정이 없어요`}
             </div>
           ) : (
             <div className="space-y-4">
-              {/* 오늘 마감 */}
+              {/* 마감 */}
               {todayData.deadlines.length > 0 && (
                 <div>
                   <div className="text-xs font-medium text-red-600 mb-2 flex items-center gap-1">
@@ -529,6 +572,9 @@ export function Dashboard({
                         checkboxProp?.value.type === "checkbox" &&
                         checkboxProp.value.checked;
                       const isFocused = block.id === focusedId;
+                      const dateProp = block.properties.find((p) => p.propertyType === "date");
+                      const dateStr = dateProp?.value.type === "date" ? dateProp.value.date : "";
+                      const dday = dateStr ? calculateDday(dateStr, selectedDate) : null;
 
                       return (
                         <div
@@ -557,7 +603,7 @@ export function Dashboard({
                             );
                           })()}
                           <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">
-                            D-day
+                            {dday ? dday.label : "D-day"}
                           </span>
                           <ChevronRight className="w-4 h-4 text-red-400" />
                         </div>
@@ -683,35 +729,53 @@ export function Dashboard({
           </section>
         )}
 
-        {/* 빠른 메모 섹션 */}
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">◈</span>
-            <h2 className="text-lg font-semibold">빠른 메모</h2>
-          </div>
+        {/* 최근 블록 섹션 */}
+        {recentBlocks.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Clock className="w-5 h-5 text-gray-500" />
+              <h2 className="text-lg font-semibold">최근 블록</h2>
+            </div>
 
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={quickMemo}
-              onChange={(e) => setQuickMemo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                  handleQuickMemoSubmit();
-                }
-              }}
-              placeholder="생각나는 거 바로 입력..."
-              className="flex-1 px-4 py-3 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            />
-            <button
-              onClick={handleQuickMemoSubmit}
-              disabled={!quickMemo.trim()}
-              className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          </div>
-        </section>
+            <div className="space-y-2">
+              {recentBlocks.map((block) => {
+                const parsed = parseBlockContent(block.content);
+                const updatedDate = new Date(block.updatedAt);
+                const now = new Date();
+                const diffMs = now.getTime() - updatedDate.getTime();
+                const diffMin = Math.floor(diffMs / 60000);
+                const diffHour = Math.floor(diffMin / 60);
+                const timeLabel =
+                  diffMin < 1
+                    ? "방금"
+                    : diffMin < 60
+                      ? `${diffMin}분 전`
+                      : diffHour < 24
+                        ? `${diffHour}시간 전`
+                        : `${Math.floor(diffHour / 24)}일 전`;
+
+                return (
+                  <div
+                    key={block.id}
+                    onClick={() => onSelectBlock(block.id)}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card cursor-pointer transition-colors hover:bg-accent/50"
+                  >
+                    <span className="flex-1 text-sm flex items-center gap-1 truncate">
+                      {parsed.icon && (
+                        <span style={{ color: parsed.color || undefined }}>{parsed.icon}</span>
+                      )}
+                      {block.name || getBlockTitle(block.content, 50)}
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {timeLabel}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       {/* TOP 3 선택 모달 */}

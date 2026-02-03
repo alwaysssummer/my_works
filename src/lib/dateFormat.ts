@@ -243,18 +243,19 @@ export function formatPercent(
 }
 
 /**
- * D-day 계산 (오늘 기준)
+ * D-day 계산 (기준 날짜 지정 가능, 기본값: 오늘)
  * @param dateStr - YYYY-MM-DD 형식
+ * @param baseDate - 기준 날짜 YYYY-MM-DD (기본: 오늘)
  * @returns { days: number, label: string, isPast: boolean, isToday: boolean }
  */
-export function calculateDday(dateStr: string): {
+export function calculateDday(dateStr: string, baseDate?: string): {
   days: number;
   label: string;
   isPast: boolean;
   isToday: boolean;
 } {
-  const today = getKoreanToday();
-  const todayDate = new Date(today);
+  const base = baseDate || getKoreanToday();
+  const todayDate = new Date(base);
   const targetDate = new Date(dateStr);
 
   // 날짜 차이 계산 (일 단위)

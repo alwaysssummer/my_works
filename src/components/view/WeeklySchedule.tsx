@@ -7,6 +7,7 @@ import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
 import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay, calculateDday } from "@/lib/dateFormat";
+import { shouldBlockAppearOnDate } from "@/lib/propertyHelpers";
 
 interface WeeklyScheduleProps {
   blocks: Block[];
@@ -133,44 +134,13 @@ export function WeeklySchedule({
   const getEventsForDate = useCallback(
     (date: Date) => {
       const dateStr = toKoreanDateString(date);
-      const dayOfWeek = date.getDay(); // 0=일, 1=월, ..., 6=토
       const result: ScheduleEvent[] = [];
 
       blocks.forEach((block) => {
         const dateProp = block.properties.find((p) => p.propertyType === "date");
         if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.time) return;
 
-        const originalDate = dateProp.value.date;
-        const repeatProp = block.properties.find((p) => p.propertyType === "repeat");
-        const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
-
-        let shouldShow = false;
-
-        // 원본 날짜와 일치하면 표시
-        if (originalDate === dateStr) {
-          shouldShow = true;
-        }
-        // 반복 설정이 있고, 원본 날짜 이후인 경우
-        else if (repeatConfig && dateStr > originalDate) {
-          // 종료 날짜 확인
-          if (repeatConfig.endDate && dateStr > repeatConfig.endDate) {
-            shouldShow = false;
-          } else if (repeatConfig.type === "weekly" && repeatConfig.weekdays?.includes(dayOfWeek)) {
-            // 매주 반복 - 해당 요일에 표시
-            shouldShow = true;
-          } else if (repeatConfig.type === "daily") {
-            // 매일 반복
-            shouldShow = true;
-          } else if (repeatConfig.type === "monthly") {
-            // 매월 반복 - 같은 일자에 표시
-            const originalDay = new Date(originalDate).getDate();
-            if (date.getDate() === originalDay) {
-              shouldShow = true;
-            }
-          }
-        }
-
-        if (shouldShow) {
+        if (shouldBlockAppearOnDate(block, dateStr)) {
           // 수업 시간 결정
           let duration = settings.defaultDuration;
           const blockDuration = block.properties.find((p) => p.propertyType === "duration");

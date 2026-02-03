@@ -157,6 +157,47 @@ export async function preloadImages(ids: string[]): Promise<Map<string, string>>
 }
 
 /**
+ * HTML 콘텐츠 내 이미지 복원
+ * blob: URL이 만료되었을 때 IndexedDB에서 다시 로드
+ * @param content HTML 콘텐츠
+ * @returns 이미지 URL이 복원된 HTML 콘텐츠
+ */
+export async function restoreImagesInContent(content: string): Promise<string> {
+  // alt="image-xxx" 패턴에서 이미지 ID 추출
+  const imageIdPattern = /alt="image-([a-f0-9-]+)"/g;
+  const matches = [...content.matchAll(imageIdPattern)];
+
+  if (matches.length === 0) {
+    return content;
+  }
+
+  // 각 이미지 ID에 대해 URL 가져오기
+  let restoredContent = content;
+  for (const match of matches) {
+    const imageId = match[1];
+    const url = await getImage(imageId);
+
+    if (url) {
+      // 해당 이미지의 src를 새 URL로 교체
+      // src="blob:..." 또는 src="" 패턴을 찾아서 교체
+      const srcPattern = new RegExp(
+        `(<img[^>]*alt="image-${imageId}"[^>]*src=")([^"]*)(")`,
+        'g'
+      );
+      const srcPatternReverse = new RegExp(
+        `(<img[^>]*src=")([^"]*)("[^>]*alt="image-${imageId}")`,
+        'g'
+      );
+
+      restoredContent = restoredContent.replace(srcPattern, `$1${url}$3`);
+      restoredContent = restoredContent.replace(srcPatternReverse, `$1${url}$3`);
+    }
+  }
+
+  return restoredContent;
+}
+
+/**
  * 사용량 확인 (대략적인 크기)
  */
 export async function getStorageUsage(): Promise<{ count: number; sizeEstimate: string }> {

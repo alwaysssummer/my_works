@@ -1,6 +1,7 @@
 import { Block } from "@/types/block";
 import { BlockProperty, PropertyType, Tag, TAG_COLORS } from "@/types/property";
 
+
 /**
  * 속성 타입으로 블록에서 속성 찾기
  */
@@ -190,4 +191,48 @@ export function isTodoBlock(block: Block): boolean {
  */
 export function isInTop3(block: Block): boolean {
   return hasPropertyType(block, "urgent");
+}
+
+/**
+ * 블록이 특정 날짜에 표시되어야 하는지 판단 (반복 일정 포함)
+ * WeeklySchedule.tsx의 반복 로직과 동일한 기준 적용
+ */
+export function shouldBlockAppearOnDate(block: Block, dateStr: string): boolean {
+  const dateProp = block.properties.find((p) => p.propertyType === "date");
+  if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.date) return false;
+
+  const originalDate = dateProp.value.date;
+
+  // 원본 날짜와 일치하면 표시
+  if (originalDate === dateStr) return true;
+
+  // 반복 설정 확인
+  const repeatProp = block.properties.find((p) => p.propertyType === "repeat");
+  const repeatConfig = repeatProp?.value?.type === "repeat" ? repeatProp.value.config : null;
+  if (!repeatConfig || dateStr <= originalDate) return false;
+
+  // 종료 날짜 지났으면 미표시
+  if (repeatConfig.endDate && dateStr > repeatConfig.endDate) return false;
+
+  if (repeatConfig.type === "daily") return true;
+
+  if (repeatConfig.type === "weekly") {
+    const date = new Date(dateStr + "T00:00:00");
+    const dayOfWeek = date.getDay();
+    return repeatConfig.weekdays?.includes(dayOfWeek) ?? false;
+  }
+
+  if (repeatConfig.type === "monthly") {
+    const originalDay = new Date(originalDate + "T00:00:00").getDate();
+    const targetDay = new Date(dateStr + "T00:00:00").getDate();
+    return originalDay === targetDay;
+  }
+
+  if (repeatConfig.type === "yearly") {
+    const orig = new Date(originalDate + "T00:00:00");
+    const target = new Date(dateStr + "T00:00:00");
+    return orig.getMonth() === target.getMonth() && orig.getDate() === target.getDate();
+  }
+
+  return false;
 }

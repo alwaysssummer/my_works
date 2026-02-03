@@ -9,8 +9,11 @@ import {
   formatDateWithWeekday,
   getKoreanNow,
   getKoreanToday,
+  toKoreanDateString,
+  calculateDday,
 } from "@/lib/dateFormat";
-import { Plus, Check } from "lucide-react";
+import { shouldBlockAppearOnDate } from "@/lib/propertyHelpers";
+import { Plus, Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 export function MobileTodayView() {
   const { blocks, updateProperty, addProperty, addBlockWithTop3, softDeleteBlock } = useBlockContext();
@@ -20,7 +23,27 @@ export function MobileTodayView() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const slotInputRef = useRef<HTMLInputElement>(null);
 
+  // 날짜 이동 상태
+  const [dateOffset, setDateOffset] = useState(0);
+
   const today = getKoreanToday();
+
+  // 선택된 날짜 (오늘 + offset)
+  const selectedDate = useMemo(() => {
+    if (dateOffset === 0) return today;
+    const date = new Date(today);
+    date.setDate(date.getDate() + dateOffset);
+    return toKoreanDateString(date);
+  }, [today, dateOffset]);
+
+  const isSelectedToday = dateOffset === 0;
+
+  // 선택된 날짜의 표시 문자열
+  const selectedDateLabel = useMemo(() => {
+    const date = new Date(selectedDate);
+    const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+    return `${date.getMonth() + 1}/${date.getDate()} (${dayNames[date.getDay()]})`;
+  }, [selectedDate]);
 
   // 화면 로드시 입력창 자동 포커스
   useEffect(() => {
@@ -57,32 +80,22 @@ export function MobileTodayView() {
       });
   }, [activeBlocks]);
 
-  // 오늘 마감 (person 속성 없는 오늘 날짜 블록)
+  // 선택 날짜 마감 (person 속성 없는 날짜 블록, 반복 일정 포함)
   const todayDeadlines = useMemo(() => {
     return activeBlocks.filter((block) => {
-      const dateProp = block.properties.find((p) => p.propertyType === "date");
       const hasPerson = block.properties.some(
         (p) => p.propertyType === "person"
       );
-      return (
-        dateProp?.value.type === "date" &&
-        dateProp.value.date === today &&
-        !hasPerson
-      );
+      return shouldBlockAppearOnDate(block, selectedDate) && !hasPerson;
     });
-  }, [activeBlocks, today]);
+  }, [activeBlocks, selectedDate]);
 
-  // 오늘 수업 (person 속성 + 오늘 날짜)
+  // 선택 날짜 수업 (person 속성 + 날짜, 반복 일정 포함)
   const todayLessons = useMemo(() => {
     return activeBlocks
       .filter((block) => {
-        const dateProp = block.properties.find((p) => p.propertyType === "date");
         const hasPerson = block.properties.some((p) => p.propertyType === "person");
-        return (
-          dateProp?.value.type === "date" &&
-          dateProp.value.date === today &&
-          hasPerson
-        );
+        return shouldBlockAppearOnDate(block, selectedDate) && hasPerson;
       })
       .sort((a, b) => {
         const timeA = a.properties.find((p) => p.propertyType === "date")?.value;
@@ -92,7 +105,7 @@ export function MobileTodayView() {
         }
         return 0;
       });
-  }, [activeBlocks, today]);
+  }, [activeBlocks, selectedDate]);
 
   // 최근 기록 (최신순, 20개)
   const recentBlocks = useMemo(() => {
@@ -179,9 +192,11 @@ export function MobileTodayView() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* 날짜 헤더 */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold">
-          {formatDateWithWeekday(getKoreanNow())}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold">
+            {formatDateWithWeekday(getKoreanNow())}
+          </h1>
+        </div>
       </header>
 
       {/* 스크롤 가능한 콘텐츠 영역 */}
@@ -271,37 +286,91 @@ export function MobileTodayView() {
           </div>
         </section>
 
-        {/* 오늘 마감 */}
+        {/* 일정 날짜 네비게이션 */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⏱</span>
+              <h2 className="text-sm font-medium">
+                {isSelectedToday ? "오늘 일정" : `${selectedDateLabel} 일정`}
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                ({todayDeadlines.length + todayLessons.length}건)
+              </span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              {!isSelectedToday && (
+                <button
+                  onClick={() => setDateOffset(0)}
+                  className="px-1.5 py-0.5 text-[10px] font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                >
+                  오늘
+                </button>
+              )}
+              <button
+                onClick={() => setDateOffset((prev) => prev - 1)}
+                aria-label="이전 날짜"
+                className="p-1 rounded hover:bg-accent transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-medium min-w-[60px] text-center">
+                {selectedDateLabel}
+              </span>
+              <button
+                onClick={() => setDateOffset((prev) => prev + 1)}
+                aria-label="다음 날짜"
+                className="p-1 rounded hover:bg-accent transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* 일정 없음 안내 */}
+        {todayDeadlines.length === 0 && todayLessons.length === 0 && (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            {isSelectedToday ? "오늘 예정된 일정이 없어요" : `${selectedDateLabel}에 예정된 일정이 없어요`}
+          </div>
+        )}
+
+        {/* 마감 */}
         {todayDeadlines.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm">⏰</span>
-              <h2 className="text-sm font-medium">오늘 마감</h2>
+              <h2 className="text-sm font-medium">마감</h2>
               <span className="text-xs text-muted-foreground">
                 ({todayDeadlines.length}건)
               </span>
             </div>
             <div className="space-y-1">
-              {todayDeadlines.map((block) => (
-                <MobileBlockCard
-                  key={block.id}
-                  block={block}
-                  variant="deadline"
-                  badge="D-day"
-                  onClick={() => setSelectedBlockId(block.id)}
-                  onDelete={handleDelete}
-                />
-              ))}
+              {todayDeadlines.map((block) => {
+                const dateProp = block.properties.find((p) => p.propertyType === "date");
+                const dateStr = dateProp?.value.type === "date" ? dateProp.value.date : "";
+                const dday = dateStr ? calculateDday(dateStr, selectedDate) : null;
+                return (
+                  <MobileBlockCard
+                    key={block.id}
+                    block={block}
+                    variant="deadline"
+                    badge={dday ? dday.label : "D-day"}
+                    onClick={() => setSelectedBlockId(block.id)}
+                    onDelete={handleDelete}
+                  />
+                );
+              })}
             </div>
           </section>
         )}
 
-        {/* 오늘 수업 */}
+        {/* 수업 */}
         {todayLessons.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm">○</span>
-              <h2 className="text-sm font-medium">오늘 수업</h2>
+              <h2 className="text-sm font-medium">수업</h2>
               <span className="text-xs text-muted-foreground">
                 ({todayLessons.length}건)
               </span>

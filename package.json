@@ -17,6 +17,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.93.1",
     "@tailwindcss/typography": "^0.5.19",
+    "@tiptap/extension-details": "^3.18.0",
     "@tiptap/extension-image": "^3.17.1",
     "@tiptap/extension-table": "^3.17.1",
     "@tiptap/extension-table-cell": "^3.17.1",
