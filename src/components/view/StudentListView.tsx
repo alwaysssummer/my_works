@@ -362,7 +362,7 @@ export function StudentListView({
       {/* 3단 레이아웃 (데스크톱) / 1단 (모바일) */}
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* 좌: 학생 목록 — 인라인 활성 시 축소 */}
-        <div className="lg:w-72 lg:shrink-0 lg:overflow-auto flex flex-col">
+        <div className={`lg:shrink-0 lg:overflow-auto flex flex-col transition-all ${inlineBlock ? 'lg:w-56' : 'lg:w-72'}`}>
           {/* 태그 칩 필터 */}
           <div className="px-4 pt-4 pb-2 overflow-x-auto">
             <div className="flex gap-2">

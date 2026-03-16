@@ -141,7 +141,6 @@ export function TasksView({
       const block = blockMap.get(blockId);
       if (!block) return;
 
-      // tab-focus, tab-inbox, tab-queue 또는 focus, inbox, queue
       const overId = over.id as string;
       const targetColumn = (overId.startsWith("tab-") ? overId.slice(4) : overId) as BlockColumn;
 
@@ -161,8 +160,8 @@ export function TasksView({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex flex-col h-full">
-          {/* 탭 헤더 */}
+        {/* 모바일: 탭 헤더 + 단일 열 */}
+        <div className="flex flex-col h-full lg:hidden">
           <div className="flex border-b flex-shrink-0">
             {COLUMN_ORDER.map((column) => (
               <DroppableTab
@@ -175,8 +174,6 @@ export function TasksView({
               />
             ))}
           </div>
-
-          {/* 선택된 탭의 블록 */}
           <div className="flex-1 overflow-hidden p-3">
             <KanbanColumn
               key={activeColumn}
@@ -191,6 +188,23 @@ export function TasksView({
           </div>
         </div>
 
+        {/* 데스크톱: 3열 그리드 */}
+        <div className="hidden lg:grid grid-cols-3 gap-3 h-full p-3">
+          {COLUMN_ORDER.map((column) => (
+            <KanbanColumn
+              key={column}
+              column={column}
+              label={COLUMN_INFO[column].label}
+              emptyText={COLUMN_INFO[column].emptyText}
+              blocks={columnBlocks[column]}
+              allTags={tags}
+              onBlockClick={onSelectBlock}
+              onToggleCheckbox={onToggleCheckbox}
+              onTogglePin={onTogglePin}
+            />
+          ))}
+        </div>
+
         <DragOverlay dropAnimation={null}>
           {activeBlock ? (
             <DragOverlayContent block={activeBlock} allTags={tags} />
@@ -201,7 +215,7 @@ export function TasksView({
   );
 }
 
-// 드롭 가능한 탭 헤더
+// 모바일 탭 (드롭 가능)
 interface DroppableTabProps {
   column: BlockColumn;
   label: string;
@@ -224,11 +238,7 @@ function DroppableTab({ column, label, count, isActive, onClick }: DroppableTabP
       } ${isOver ? "bg-primary/10" : ""}`}
     >
       {label}
-      <span className={`text-xs px-1.5 py-0.5 rounded ${
-        isActive ? "bg-primary/15" : "bg-accent"
-      }`}>
-        {count}
-      </span>
+      <span className="text-xs text-muted-foreground">{count}</span>
     </button>
   );
 }
@@ -236,6 +246,7 @@ function DroppableTab({ column, label, count, isActive, onClick }: DroppableTabP
 // 칸반 열 컴포넌트
 interface KanbanColumnProps {
   column: BlockColumn;
+  label?: string;
   emptyText: string;
   blocks: Block[];
   allTags: Tag[];
@@ -246,6 +257,7 @@ interface KanbanColumnProps {
 
 function KanbanColumn({
   column,
+  label,
   emptyText,
   blocks,
   allTags,
@@ -258,12 +270,19 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col h-full rounded-lg overflow-hidden transition-colors ${
+      className={`flex flex-col h-full border rounded-lg bg-card overflow-hidden transition-colors ${
         isOver ? "bg-primary/5" : ""
       }`}
     >
+      {/* 열 헤더 — 모바일에서는 탭이 대신하므로 label 없으면 숨김 */}
+      {label && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b flex-shrink-0">
+          <span className="text-sm font-medium">{label}</span>
+          <span className="ml-auto text-xs text-muted-foreground">{blocks.length}</span>
+        </div>
+      )}
       {/* 블록 리스트 */}
-      <div className="flex-1 overflow-y-auto space-y-1.5">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
         {blocks.length === 0 ? (
           <div className="px-4 py-6 text-sm text-muted-foreground/60 italic text-center">
             {emptyText}

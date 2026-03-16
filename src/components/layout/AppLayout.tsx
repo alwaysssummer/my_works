@@ -418,8 +418,8 @@ function AppLayoutInner() {
           onOverflowAction={handleOverflowAction}
         />
 
-        {/* 태그 필터 칩 (할일 탭에서만) */}
-        {activeTab === "tasks" && (
+        {/* 태그 필터 칩 — 일시 숨김 */}
+        {false && activeTab === "tasks" && (
           <TagFilterChips
             blocks={blocks}
             tags={tags}
