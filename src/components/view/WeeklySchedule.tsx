@@ -412,10 +412,10 @@ export function WeeklySchedule({
   return (
     <main className="flex-1 h-screen overflow-hidden bg-background flex flex-col">
       {/* 헤더 */}
-      <header className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
+      <header className="h-14 flex items-center justify-center px-4 border-b border-border flex-shrink-0 relative">
         <button
           onClick={() => onChangeScheduleMode?.("calendar")}
-          className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+          className="absolute left-4 px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
           title="월간 뷰로 전환"
         >
           Month
