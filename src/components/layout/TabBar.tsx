@@ -65,8 +65,8 @@ export function TabBar({
           );
         })}
 
-        {/* 더보기 */}
-        <div className="relative" ref={overflowRef}>
+        {/* 더보기 (모바일 숨김) */}
+        <div className="relative hidden lg:block" ref={overflowRef}>
           <button
             onClick={() => setShowOverflow(!showOverflow)}
             className={`px-4 py-2.5 text-sm transition-colors ${
