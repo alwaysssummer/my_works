@@ -282,236 +282,141 @@ export function StudentListView({
   return (
     <main className="flex-1 h-screen overflow-auto bg-background">
       {/* 헤더 */}
-      <header className="h-14 flex items-center justify-between px-6 border-b border-border">
+      <header className="h-14 flex items-center px-6 border-b border-border">
         <div className="flex items-center gap-2">
           <span className="text-lg">○</span>
           <span className="font-medium">학생 대시보드</span>
         </div>
-        <button
-          onClick={onAddStudent}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          학생 추가
-        </button>
       </header>
 
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        {/* 섹션 1: 요약 통계 카드 4개 */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* 총 학생 */}
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Users className="w-4 h-4" />
-              <span className="text-sm">총 학생</span>
-            </div>
-            <div className="text-2xl font-bold">{totalStats.total}명</div>
-            {totalStats.newThisMonth > 0 && (
-              <div className="text-xs text-green-600">+{totalStats.newThisMonth} 이번달</div>
-            )}
-          </div>
+      {/* 모바일 컴팩트 요약 바 */}
+      <div className="lg:hidden px-4 py-2 border-b border-border bg-card flex items-center gap-4 text-sm">
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <Users className="w-3.5 h-3.5" />
+          <span className="font-medium text-foreground">{totalStats.total}</span>명
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <BookOpen className="w-3.5 h-3.5" />
+          <span className="font-medium text-foreground">{weeklyLessons}</span>회
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <Phone className="w-3.5 h-3.5" />
+          <span className="font-medium text-foreground">{contactRate}%</span>
+        </span>
+      </div>
 
-          {/* 이번주 수업 */}
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <BookOpen className="w-4 h-4" />
-              <span className="text-sm">이번주 수업</span>
-            </div>
-            <div className="text-2xl font-bold">{weeklyLessons}회</div>
-            <div className={`text-xs ${weekDiff >= 0 ? "text-green-600" : "text-red-500"}`}>
-              {weekDiff >= 0 ? "+" : ""}{weekDiff} 지난주 대비
-            </div>
-          </div>
-
-          {/* 연락처 등록 */}
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Phone className="w-4 h-4" />
-              <span className="text-sm">연락처 등록</span>
-            </div>
-            <div className="text-2xl font-bold">{contactRate}%</div>
-            <div className="text-xs text-muted-foreground">
-              {contactStats.count}/{contactStats.total}명
-            </div>
-          </div>
-
-          {/* 신규 학생 */}
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <UserPlus className="w-4 h-4" />
-              <span className="text-sm">신규 학생</span>
-            </div>
-            <div className="text-2xl font-bold">{totalStats.newThisMonth}명</div>
-            <div className="text-xs text-muted-foreground">이번달</div>
-          </div>
-        </section>
-
-        {/* 섹션 2: 차트 영역 (2열) */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 태그별 분포 막대 그래프 */}
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <h3 className="font-medium mb-4 flex items-center gap-2">
-              <span>▦</span> 태그별 학생 분포
-            </h3>
-            {tagDistribution.length > 0 ? (
-              <div className="space-y-3">
-                {tagDistribution.map(({ name, count, color }) => (
-                  <div key={name} className="flex items-center gap-3">
-                    <span className="text-sm w-16 truncate">{name}</span>
-                    <div className="flex-1 h-5 bg-gray-100 rounded overflow-hidden">
-                      <div
-                        className="h-full rounded transition-all"
-                        style={{
-                          width: `${(count / maxTagCount) * 100}%`,
-                          backgroundColor: color,
-                        }}
-                      />
-                    </div>
-                    <span className="text-sm text-muted-foreground w-12 text-right">
-                      {count}명
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                태그가 지정된 학생이 없어요
-              </p>
-            )}
-          </div>
-
-          {/* 수업 TOP 3 */}
-          <div className="p-4 rounded-xl border border-border bg-card">
-            <h3 className="font-medium mb-4 flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-yellow-500" />
-              수업 많은 학생 TOP 3
-            </h3>
-            {topStudents.length > 0 ? (
-              <div className="space-y-3">
-                {topStudents.map((item, i) => {
-                  const studentTags = getStudentTags(item.student);
-                  const name = item.student.name || getPlainText(item.student.content) || "이름 없음";
-                  const tagText = studentTags.length > 0 ? studentTags[0].name : "";
-
-                  return (
-                    <div
-                      key={item.student.id}
-                      onClick={() => onSelectBlock(item.student.id)}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                    >
-                      <span className={`text-lg font-bold ${
-                        i === 0 ? "text-yellow-500" :
-                        i === 1 ? "text-gray-400" :
-                        "text-amber-700"
-                      }`}>
-                        {i + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-medium truncate block">{name}</span>
-                        {tagText && (
-                          <span className="text-xs text-muted-foreground">({tagText})</span>
-                        )}
-                      </div>
-                      <span className="text-sm font-medium text-blue-600">
-                        {item.count}회
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                수업 기록이 없어요
-              </p>
-            )}
-          </div>
-        </section>
-
-        {/* 섹션 3: 학생 목록 */}
-        <section className="rounded-xl border border-border bg-card overflow-hidden">
-          {/* 목록 헤더 */}
-          <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {/* 전체 선택 체크박스 */}
-              <button
-                onClick={handleSelectAll}
-                className="w-5 h-5 border-2 border-border rounded flex items-center justify-center hover:border-blue-500 transition-colors"
-                aria-label={isAllSelected ? "전체 선택 해제" : "전체 선택"}
-              >
-                {isAllSelected && <span className="text-blue-600 text-sm">✓</span>}
-                {isSomeSelected && <span className="text-blue-600 text-xs">−</span>}
-              </button>
-              <h3 className="font-medium flex items-center gap-2">
-                <span>☰</span> 전체 학생 목록
-                <span className="text-sm text-muted-foreground font-normal">
-                  ({filteredStudents.length}명)
-                </span>
-              </h3>
-            </div>
+      {/* 2단 레이아웃 */}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+        {/* 좌측: 학생 목록 (메인) */}
+        <div className="flex-1 lg:overflow-auto flex flex-col">
+          {/* 태그 칩 필터 */}
+          <div className="px-4 pt-4 pb-2 overflow-x-auto">
             <div className="flex gap-2">
-              {/* 선택된 항목이 있을 때 일괄 작업 버튼 표시 */}
-              {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 mr-2">
-                  <span className="text-sm text-blue-600 font-medium">
-                    {selectedIds.size}명 선택
-                  </span>
-                  {/* 액션 버튼들 - 향후 이동, 복사 등 추가 가능 */}
-                  {onDeleteBlocks && (
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 border border-red-200 rounded hover:bg-red-50 transition-colors"
-                      aria-label="선택한 학생 삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      삭제
-                    </button>
-                  )}
+              <button
+                onClick={() => setSelectedTag(null)}
+                className={`px-3 py-1 text-sm rounded-full whitespace-nowrap transition-colors ${
+                  selectedTag === null
+                    ? "bg-blue-500 text-white"
+                    : "bg-accent text-muted-foreground hover:bg-accent/80"
+                }`}
+              >
+                전체({studentBlocks.length})
+              </button>
+              {availableTags.map((tag) => {
+                const tagCount = studentBlocks.filter((b) => {
+                  const tagProp = b.properties.find((p) => p.propertyType === "tag");
+                  return tagProp?.value?.type === "tag" && tagProp.value.tagIds.includes(tag.id);
+                }).length;
+                return (
                   <button
-                    onClick={handleClearSelection}
-                    className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-accent transition-colors"
+                    key={tag.id}
+                    onClick={() => setSelectedTag(selectedTag === tag.id ? null : tag.id)}
+                    className={`px-3 py-1 text-sm rounded-full whitespace-nowrap transition-colors ${
+                      selectedTag === tag.id
+                        ? "text-white"
+                        : "hover:opacity-80"
+                    }`}
+                    style={{
+                      backgroundColor: selectedTag === tag.id ? tag.color : `${tag.color}20`,
+                      color: selectedTag === tag.id ? "white" : tag.color,
+                    }}
                   >
-                    선택 해제
+                    #{tag.name}
                   </button>
-                </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 검색 + 학생추가 + 일괄 작업 */}
+          <div className="px-4 py-2 flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[140px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-8 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               )}
-              {/* 검색 입력 */}
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="검색..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-8 py-1.5 text-sm border border-border rounded-lg bg-background w-36 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {searchQuery && (
+            </div>
+            <button
+              onClick={onAddStudent}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              학생 추가
+            </button>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-600 font-medium">
+                  {selectedIds.size}명 선택
+                </span>
+                {onDeleteBlocks && (
                   <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 border border-red-200 rounded hover:bg-red-50 transition-colors"
+                    aria-label="선택한 학생 삭제"
                   >
-                    <X className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
+                    삭제
                   </button>
                 )}
+                <button
+                  onClick={handleClearSelection}
+                  className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-accent transition-colors"
+                >
+                  선택 해제
+                </button>
               </div>
-
-              {/* 태그 필터 */}
-              <select
-                value={selectedTag || ""}
-                onChange={(e) => setSelectedTag(e.target.value || null)}
-                className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">전체 태그</option>
-                {availableTags.map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            )}
           </div>
 
-          {/* 학생 목록 (1열) */}
-          <div ref={listRef} className="divide-y divide-border">
+          {/* 목록 헤더 */}
+          <div className="px-4 py-2 border-b border-border flex items-center gap-3">
+            <button
+              onClick={handleSelectAll}
+              className="w-5 h-5 border-2 border-border rounded flex items-center justify-center hover:border-blue-500 transition-colors"
+              aria-label={isAllSelected ? "전체 선택 해제" : "전체 선택"}
+            >
+              {isAllSelected && <span className="text-blue-600 text-sm">✓</span>}
+              {isSomeSelected && <span className="text-blue-600 text-xs">−</span>}
+            </button>
+            <span className="text-sm text-muted-foreground">
+              전체 {filteredStudents.length}명
+            </span>
+          </div>
+
+          {/* 학생 목록 */}
+          <div ref={listRef} className="divide-y divide-border flex-1 overflow-auto">
             {filteredStudents.length > 0 ? (
               <>
                 {filteredStudents.map((student) => {
@@ -593,7 +498,132 @@ export function StudentListView({
               </div>
             )}
           </div>
-        </section>
+        </div>
+
+        {/* 우측: 사이드바 */}
+        <aside className="hidden lg:block w-80 border-l border-border lg:overflow-auto">
+          <div className="sticky top-0 p-4 space-y-4">
+            {/* 요약 통계 카드 2x2 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                  <Users className="w-3.5 h-3.5" />
+                  <span className="text-xs">총 학생</span>
+                </div>
+                <div className="text-xl font-bold">{totalStats.total}명</div>
+                {totalStats.newThisMonth > 0 && (
+                  <div className="text-xs text-green-600">+{totalStats.newThisMonth} 이번달</div>
+                )}
+              </div>
+              <div className="p-3 rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span className="text-xs">이번주 수업</span>
+                </div>
+                <div className="text-xl font-bold">{weeklyLessons}회</div>
+                <div className={`text-xs ${weekDiff >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {weekDiff >= 0 ? "+" : ""}{weekDiff} 지난주 대비
+                </div>
+              </div>
+              <div className="p-3 rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                  <Phone className="w-3.5 h-3.5" />
+                  <span className="text-xs">연락처 등록</span>
+                </div>
+                <div className="text-xl font-bold">{contactRate}%</div>
+                <div className="text-xs text-muted-foreground">
+                  {contactStats.count}/{contactStats.total}명
+                </div>
+              </div>
+              <div className="p-3 rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span className="text-xs">신규 학생</span>
+                </div>
+                <div className="text-xl font-bold">{totalStats.newThisMonth}명</div>
+                <div className="text-xs text-muted-foreground">이번달</div>
+              </div>
+            </div>
+
+            {/* 수업 TOP 3 */}
+            <div className="p-3 rounded-xl border border-border bg-card">
+              <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-yellow-500" />
+                수업 TOP 3
+              </h3>
+              {topStudents.length > 0 ? (
+                <div className="space-y-2">
+                  {topStudents.map((item, i) => {
+                    const studentTags = getStudentTags(item.student);
+                    const name = item.student.name || getPlainText(item.student.content) || "이름 없음";
+                    const tagText = studentTags.length > 0 ? studentTags[0].name : "";
+
+                    return (
+                      <div
+                        key={item.student.id}
+                        onClick={() => onSelectBlock(item.student.id)}
+                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
+                      >
+                        <span className={`text-sm font-bold ${
+                          i === 0 ? "text-yellow-500" :
+                          i === 1 ? "text-gray-400" :
+                          "text-amber-700"
+                        }`}>
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium truncate block">{name}</span>
+                          {tagText && (
+                            <span className="text-xs text-muted-foreground">({tagText})</span>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-blue-600">
+                          {item.count}회
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-3">
+                  수업 기록이 없어요
+                </p>
+              )}
+            </div>
+
+            {/* 태그별 분포 */}
+            <div className="p-3 rounded-xl border border-border bg-card">
+              <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                <span>▦</span> 태그별 분포
+              </h3>
+              {tagDistribution.length > 0 ? (
+                <div className="space-y-2">
+                  {tagDistribution.map(({ name, count, color }) => (
+                    <div key={name} className="flex items-center gap-2">
+                      <span className="text-xs w-12 truncate">{name}</span>
+                      <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                        <div
+                          className="h-full rounded transition-all"
+                          style={{
+                            width: `${(count / maxTagCount) * 100}%`,
+                            backgroundColor: color,
+                          }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground w-8 text-right">
+                        {count}명
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-3">
+                  태그가 지정된 학생이 없어요
+                </p>
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
 
       {/* 삭제 확인 모달 */}
