@@ -886,6 +886,38 @@ export function useBlocks() {
     );
   }, []);
 
+  // 체크된 지 24시간 지난 블록 soft delete
+  const cleanupCheckedBlocks = useCallback(() => {
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    setBlocks((prev) => {
+      let changed = false;
+      const updated = prev.map((block) => {
+        if (block.isDeleted) return block;
+        const checkProp = block.properties.find((p) => p.propertyType === "checkbox");
+        if (
+          checkProp?.value.type === "checkbox" &&
+          checkProp.value.checked &&
+          checkProp.value.checkedAt &&
+          now - new Date(checkProp.value.checkedAt).getTime() > TWENTY_FOUR_HOURS
+        ) {
+          changed = true;
+          return { ...block, isDeleted: true, deletedAt: new Date(), updatedAt: new Date() };
+        }
+        return block;
+      });
+      return changed ? updated : prev;
+    });
+  }, []);
+
+  // 로드 후 실행 + 15분 주기
+  useEffect(() => {
+    if (!isLoaded) return;
+    cleanupCheckedBlocks();
+    const interval = setInterval(cleanupCheckedBlocks, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isLoaded, cleanupCheckedBlocks]);
+
   // 선택된 블록 일괄 삭제
   const deleteSelectedBlocks = useCallback(() => {
     setBlocks((prev) => prev.filter((block) => !selectedBlockIds.has(block.id)));

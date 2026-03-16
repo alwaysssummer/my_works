@@ -8,12 +8,7 @@ import {
   KeyboardEvent,
 } from "react";
 import { useBlockActions } from "@/contexts/BlockContext";
-import {
-  processUnifiedInput,
-  determineInputMode,
-  INPUT_THRESHOLDS,
-  InputMode,
-} from "@/lib/unifiedInputProcessor";
+import { processUnifiedInput } from "@/lib/unifiedInputProcessor";
 import { parseQuickInput, hasQuickProperties } from "@/lib/parseQuickInput";
 import { processBlockInput } from "@/lib/blockDefaults";
 
@@ -28,51 +23,74 @@ interface UnifiedInputProps {
   autoFocus?: boolean;
   /** 전체 페이지 열기 콜백 (NoteView 열기) */
   onOpenFullPage?: (blockId: string) => void;
+  /** 탭별 입력 컨텍스트 */
+  inputContext?: "schedule" | "tasks" | "students" | "general";
 }
 
 /**
- * 통합 입력 컴포넌트
+ * 통합 입력 컴포넌트 — Google Keep 스타일
  *
- * GTD 스타일 자동 확장:
- * - 30자 이하: 한 줄 입력
- * - 30~100자: 자동 확장 (2-3줄)
- * - 100자+ 또는 Shift+Enter: 전체 페이지 열림
+ * - 비포커스: 한 줄 input
+ * - 포커스: textarea (자동 높이 확장)
+ * - Enter: 줄바꿈
+ * - Ctrl+Enter: 저장
+ * - Shift+Enter: 전체 페이지 열기
+ * - Escape: 취소/접기
  */
 export function UnifiedInput({
-  placeholder = "입력하세요...",
+  placeholder = "입력...",
   showHints = true,
   triggerFocus,
   autoFocus = false,
   onOpenFullPage,
+  inputContext = "general",
 }: UnifiedInputProps) {
   const [value, setValue] = useState("");
-  const [mode, setMode] = useState<InputMode>("single");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { addBlock, addProperty } = useBlockActions();
+  const [isPinToggled, setIsPinToggled] = useState(false);
 
-  // 입력 모드 자동 결정
+  const { addBlock, addProperty, togglePin } = useBlockActions();
+
+  // textarea 자동 높이 조절
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = textarea.scrollHeight + "px";
+  }, []);
+
+  // 포커스 시 textarea로 전환 후 높이 조절
   useEffect(() => {
-    const newMode = determineInputMode(value);
-    if (newMode !== mode) {
-      setMode(newMode);
+    if (isFocused) {
+      // 다음 렌더 사이클에서 textarea에 포커스
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+          textarea.focus();
+          // 커서를 끝으로 이동
+          const len = textarea.value.length;
+          textarea.setSelectionRange(len, len);
+          adjustTextareaHeight();
+        }
+      });
     }
-  }, [value, mode]);
+  }, [isFocused, adjustTextareaHeight]);
 
   // 외부 트리거로 포커스
   useEffect(() => {
     if (triggerFocus && triggerFocus > 0) {
       setTimeout(() => {
-        if (mode === "single") {
-          inputRef.current?.focus();
-        } else {
+        if (isFocused) {
           textareaRef.current?.focus();
+        } else {
+          inputRef.current?.focus();
         }
       }, 50);
     }
-  }, [triggerFocus, mode]);
+  }, [triggerFocus, isFocused]);
 
   // 자동 포커스
   useEffect(() => {
@@ -84,57 +102,69 @@ export function UnifiedInput({
     }
   }, [autoFocus]);
 
+  // 속성 추가 공통 로직
+  const addParsedProperties = useCallback(
+    (blockId: string, props: ReturnType<typeof parseQuickInput>) => {
+      if (hasQuickProperties(props)) {
+        if (props.hasCheckbox) {
+          addProperty(blockId, "checkbox", "메모", {
+            type: "checkbox",
+            checked: false,
+          });
+        }
+        if (props.date) {
+          addProperty(blockId, "date", "날짜", {
+            type: "date",
+            date: props.date,
+          });
+        }
+        if (props.tags.length > 0) {
+          addProperty(blockId, "tag", "태그", {
+            type: "tag",
+            tagIds: props.tags,
+          });
+        }
+        if (props.priority) {
+          addProperty(blockId, "priority", "우선순위", {
+            type: "priority",
+            level: props.priority,
+          });
+        }
+      }
+      // 기본: 항상 메모(체크박스)로 저장 — 빠른 수집함
+      if (!props.hasCheckbox) {
+        addProperty(blockId, "checkbox", "메모", {
+          type: "checkbox",
+          checked: false,
+        });
+      }
+    },
+    [addProperty]
+  );
+
   // 제출 핸들러
   const handleSubmit = useCallback(() => {
     if (!value.trim()) return;
 
-    // 입력 처리
     const processed = processUnifiedInput(value.trim());
 
-    // 블록 생성
     const newBlockId = addBlock(undefined, {
       name: processed.name,
       content: processed.content,
     });
 
-    // 파싱된 속성 자동 추가
-    const props = processed.properties;
-    if (hasQuickProperties(props)) {
-      if (props.hasCheckbox) {
-        addProperty(newBlockId, "checkbox", "할일", {
-          type: "checkbox",
-          checked: false,
-        });
-      }
-      if (props.date) {
-        addProperty(newBlockId, "date", "날짜", {
-          type: "date",
-          date: props.date,
-        });
-      }
-      if (props.tags.length > 0) {
-        addProperty(newBlockId, "tag", "태그", {
-          type: "tag",
-          tagIds: props.tags,
-        });
-      }
-      if (props.priority) {
-        addProperty(newBlockId, "priority", "우선순위", {
-          type: "priority",
-          level: props.priority,
-        });
-      }
+    addParsedProperties(newBlockId, processed.properties);
+
+    // isPinToggled가 켜져 있으면 생성된 블록을 고정
+    if (isPinToggled) {
+      togglePin(newBlockId);
+      setIsPinToggled(false);
     }
 
     // 초기화
     setValue("");
-    setMode("single");
-
-    // 전체 페이지 모드였으면 NoteView 열기
-    if (mode === "full" && onOpenFullPage) {
-      onOpenFullPage(newBlockId);
-    }
-  }, [value, mode, addBlock, addProperty, onOpenFullPage]);
+    // 포커스 유지 — 연속 입력 가능하도록 setIsFocused(false) 제거
+  }, [value, addBlock, addParsedProperties, isPinToggled, togglePin]);
 
   // 전체 페이지로 확장
   const expandToFullPage = useCallback(() => {
@@ -144,8 +174,12 @@ export function UnifiedInput({
         name: "",
         content: "",
       });
+      if (isPinToggled) {
+        togglePin(newBlockId);
+        setIsPinToggled(false);
+      }
       setValue("");
-      setMode("single");
+      setIsFocused(false);
       if (onOpenFullPage) {
         onOpenFullPage(newBlockId);
       }
@@ -157,86 +191,56 @@ export function UnifiedInput({
         content: processed.content,
       });
 
-      // 속성 추가 (handleSubmit과 동일 로직)
-      const props = processed.properties;
-      if (hasQuickProperties(props)) {
-        if (props.hasCheckbox) {
-          addProperty(newBlockId, "checkbox", "할일", {
-            type: "checkbox",
-            checked: false,
-          });
-        }
-        if (props.date) {
-          addProperty(newBlockId, "date", "날짜", {
-            type: "date",
-            date: props.date,
-          });
-        }
-        if (props.tags.length > 0) {
-          addProperty(newBlockId, "tag", "태그", {
-            type: "tag",
-            tagIds: props.tags,
-          });
-        }
-        if (props.priority) {
-          addProperty(newBlockId, "priority", "우선순위", {
-            type: "priority",
-            level: props.priority,
-          });
-        }
+      addParsedProperties(newBlockId, processed.properties);
+
+      if (isPinToggled) {
+        togglePin(newBlockId);
+        setIsPinToggled(false);
       }
 
       setValue("");
-      setMode("single");
+      setIsFocused(false);
 
       if (onOpenFullPage) {
         onOpenFullPage(newBlockId);
       }
     }
-  }, [value, addBlock, addProperty, onOpenFullPage]);
+  }, [value, addBlock, addParsedProperties, onOpenFullPage, isPinToggled, togglePin]);
 
   // 취소
   const handleCancel = useCallback(() => {
     setValue("");
-    setMode("single");
     setIsFocused(false);
+    setIsPinToggled(false);
   }, []);
 
-  // 키보드 핸들러 (single 모드)
+  // 키보드 핸들러 (input — 비포커스 상태에서 클릭 시)
   const handleInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
-      console.log("[UnifiedInput] KeyDown:", e.key, "shiftKey:", e.shiftKey);
       if (e.key === "Enter") {
-        if (e.shiftKey) {
-          // Shift+Enter: 전체 페이지
-          console.log("[UnifiedInput] Shift+Enter detected, expanding to full page");
-          e.preventDefault();
-          expandToFullPage();
-        } else {
-          // Enter: 저장
-          e.preventDefault();
-          handleSubmit();
-        }
+        e.preventDefault();
+        // input에서 Enter → 포커스 전환 (textarea로)
+        setIsFocused(true);
       }
       if (e.key === "Escape") {
         handleCancel();
       }
     },
-    [handleSubmit, expandToFullPage, handleCancel]
+    [handleCancel]
   );
 
-  // 키보드 핸들러 (expanded/full 모드)
-  const handleTextareaKeyDown = useCallback(
+  // 키보드 핸들러 (textarea)
+  const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter") {
-        if (e.shiftKey && mode !== "full") {
-          // Shift+Enter: 전체 페이지로 전환
-          e.preventDefault();
-          setMode("full");
-        } else if (e.ctrlKey || e.metaKey) {
+        if (e.ctrlKey || e.metaKey) {
           // Ctrl+Enter: 저장
           e.preventDefault();
           handleSubmit();
+        } else if (e.shiftKey) {
+          // Shift+Enter: 전체 페이지 열기
+          e.preventDefault();
+          expandToFullPage();
         }
         // 일반 Enter: 줄바꿈 (기본 동작)
       }
@@ -245,203 +249,109 @@ export function UnifiedInput({
         handleCancel();
       }
     },
-    [mode, handleSubmit, handleCancel]
+    [handleSubmit, expandToFullPage, handleCancel]
   );
 
-  // 붙여넣기 핸들러
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent) => {
-      const pastedText = e.clipboardData.getData("text");
-      const newValue = value + pastedText;
-
-      // 긴 텍스트 붙여넣기 시 전체 페이지 모드
-      if (newValue.length > INPUT_THRESHOLDS.EXPANDED) {
-        setMode("full");
-      }
+  // textarea onChange
+  const handleTextareaChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setValue(e.target.value);
+      // 높이 자동 조절
+      requestAnimationFrame(adjustTextareaHeight);
     },
-    [value]
+    [adjustTextareaHeight]
   );
 
-  // 포커스 핸들러
-  const handleFocus = useCallback(() => {
+  // 포커스 핸들러 (input 클릭 시 textarea로 전환)
+  const handleInputFocus = useCallback(() => {
     setIsFocused(true);
   }, []);
 
-  const handleBlur = useCallback(() => {
-    if (!value.trim()) {
-      setIsFocused(false);
-      setMode("single");
-    }
-  }, [value]);
-
-  // 단일 줄 모드 (포커스 안 됨) - 모바일 호환: 실제 input을 사용
-  if (mode === "single" && !isFocused) {
-    return (
-      <div className="px-4 pb-3">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-accent/30 hover:bg-accent/50 hover:shadow transition-all">
-            <span className="text-muted-foreground text-lg">+</span>
-            {/* 모바일 호환: 터치 시 바로 키보드가 뜨도록 실제 input 사용 */}
-            <input
-              ref={inputRef}
-              type="text"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              onPaste={handlePaste}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              placeholder={placeholder}
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-              // 모바일에서 터치 시 즉시 포커스되도록
-              enterKeyHint="done"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-            />
-            <button
-              className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
-              onClick={(e) => {
-                e.stopPropagation();
-                expandToFullPage();
-              }}
-              title="전체 페이지로 열기 (Shift+Enter)"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M7 17L17 7M17 7H7M17 7V17" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 한 줄 입력 (focused)
-  if (mode === "single") {
-    return (
-      <div className="px-4 pb-3">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-primary bg-card shadow-md transition-all">
-            <span className="text-primary text-lg">+</span>
-            <input
-              ref={inputRef}
-              type="text"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              onPaste={handlePaste}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              placeholder={placeholder}
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-              autoFocus
-              // 모바일 호환성
-              enterKeyHint="done"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-            />
-            <button
-              className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
-              onClick={expandToFullPage}
-              title="전체 페이지로 열기"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M7 17L17 7M17 7H7M17 7V17" />
-              </svg>
-            </button>
-          </div>
-          {showHints && (
-            <div className="flex gap-3 mt-1.5 px-1 text-[10px] text-muted-foreground/60">
-              <span>Enter 저장</span>
-              <span>Shift+Enter 확장</span>
-              <span>[] 할일</span>
-              <span>@오늘</span>
-              <span>#태그</span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // 확장/전체 모드
+  // 통합 렌더링: input 항상 보임 + 포커스 시 제자리 확장 오버레이
   return (
-    <div className="px-4 pb-3">
-      <div className="max-w-3xl mx-auto">
-        <div
-          className={`rounded-lg border shadow-md transition-all ${
-            mode === "full"
-              ? "border-primary/50 bg-card"
-              : "border-primary bg-card"
-          }`}
+    <div className="relative">
+      {/* 항상 존재 — 헤더 높이 유지용 (포커스 시 카드에 가려짐) */}
+      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+        isFocused
+          ? "border-transparent bg-accent/30"
+          : "border-border bg-accent/30 hover:bg-accent/50"
+      }`}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
+          className={isPinToggled ? "text-sm" : "text-sm grayscale opacity-40 hover:opacity-70"}
+          title="고정하여 저장"
+          tabIndex={-1}
         >
-          {/* 헤더 (전체 모드일 때) */}
-          {mode === "full" && (
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border/50">
-              <span className="text-xs text-muted-foreground">전체 페이지</span>
+          📌
+        </button>
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          onFocus={handleInputFocus}
+          placeholder={placeholder}
+          className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      {/* 포커스 시 제자리 확장 오버레이 — input 위치부터 시작 */}
+      {isFocused && (
+        <>
+          {/* backdrop — 클릭하면 접기 */}
+          <div
+            className="fixed inset-0 z-20"
+            onClick={handleCancel}
+          />
+
+          {/* 확장 카드 — top-0으로 input 위를 덮어씌움 */}
+          <div className="absolute top-0 left-0 right-0 z-30 rounded-lg border border-primary bg-card shadow-lg">
+            <div className="flex items-start gap-2 px-3 pt-1.5">
               <button
-                onClick={handleCancel}
-                className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
-                title="닫기 (ESC)"
+                onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
+                className={isPinToggled
+                  ? "text-sm mt-0.5 hover:opacity-70"
+                  : "text-sm mt-0.5 grayscale opacity-40 hover:opacity-70"}
+                title={isPinToggled ? "고정 해제" : "고정하여 저장"}
+                tabIndex={-1}
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M18 6L6 18M6 6L18 18" />
+                📌
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={handleTextareaChange}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                className="flex-1 bg-transparent outline-none text-sm leading-relaxed resize-none placeholder:text-muted-foreground min-w-0 overflow-hidden"
+                style={{ maxHeight: "300px", overflowY: value.split("\n").length > 10 ? "auto" : "hidden" }}
+                rows={1}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <button
+                className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded flex-shrink-0"
+                onClick={expandToFullPage}
+                title="전체 페이지로 열기 (Shift+Enter)"
+                tabIndex={-1}
+                data-input-toolbar
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M7 17L17 7M17 7H7M17 7V17" />
                 </svg>
               </button>
             </div>
-          )}
 
-          {/* 입력 영역 */}
-          <div className="p-3">
-            <textarea
-              ref={textareaRef}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={handleTextareaKeyDown}
-              onPaste={handlePaste}
-              onFocus={handleFocus}
-              placeholder={placeholder}
-              className={`w-full bg-transparent outline-none text-sm resize-none placeholder:text-muted-foreground ${
-                mode === "full" ? "min-h-[200px]" : "min-h-[80px]"
-              }`}
-              rows={mode === "full" ? 10 : 3}
-              autoFocus
-              // 모바일 호환성
-              enterKeyHint="done"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-            />
-
-            {/* 힌트 */}
+            {/* 퀵 문법 힌트 */}
             {showHints && (
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] text-muted-foreground/60">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 px-3 pt-1 text-[10px] text-muted-foreground/60">
                 <span>[] 할일</span>
                 <span>@오늘 @내일</span>
                 <span>#태그</span>
@@ -451,38 +361,34 @@ export function UnifiedInput({
             )}
 
             {/* 하단 툴바 */}
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-              <span className="text-xs text-muted-foreground">
-                {mode === "full" ? "Ctrl+Enter 저장" : "Enter 줄바꿈 · Ctrl+Enter 저장"}
+            <div
+              className="flex items-center justify-between px-3 py-1.5 mt-1 border-t border-border/50"
+              data-input-toolbar
+            >
+              <span className="text-[10px] text-muted-foreground/50">
+                Ctrl+Enter 저장
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={handleCancel}
-                  className="px-3 py-1 text-xs text-muted-foreground hover:bg-accent rounded"
+                  className="px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-accent rounded"
+                  tabIndex={-1}
                 >
-                  취소
+                  닫기
                 </button>
-                {mode === "expanded" && (
-                  <button
-                    onClick={() => setMode("full")}
-                    className="px-3 py-1 text-xs text-muted-foreground hover:bg-accent rounded"
-                    title="전체 페이지로 열기"
-                  >
-                    확장
-                  </button>
-                )}
                 <button
                   onClick={handleSubmit}
                   disabled={!value.trim()}
-                  className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2.5 py-0.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  tabIndex={-1}
                 >
                   저장
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

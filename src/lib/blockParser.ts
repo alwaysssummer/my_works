@@ -32,13 +32,14 @@ export interface ParsedBlock {
  * HTML content에서 텍스트만 추출
  */
 export function stripHtml(html: string): string {
-  if (typeof window === "undefined") {
-    // SSR에서는 간단한 정규식 사용
-    return html.replace(/<[^>]*>/g, "").trim();
-  }
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  return div.textContent || div.innerText || "";
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**

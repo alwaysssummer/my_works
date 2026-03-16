@@ -6,7 +6,7 @@ import { Block } from "@/types/block";
 import { CustomView } from "@/types/customView";
 
 export function useView() {
-  const [view, setView] = useState<View>({ type: "dashboard" });
+  const [view, setView] = useState<View>({ type: "weekly" });
 
   // 뷰 변경
   const changeView = useCallback(

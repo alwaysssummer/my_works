@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ViewRouter } from '@/components/layout/ViewRouter'
 import { View } from '@/types/view'
+import { BlockProvider } from '@/contexts/BlockContext'
 
 // 모든 뷰 컴포넌트 모킹
 vi.mock('@/components/view/StudentListView', () => ({
@@ -20,8 +21,16 @@ vi.mock('@/components/view/CalendarView', () => ({
   CalendarView: () => <div data-testid="calendar-view">CalendarView</div>,
 }))
 
+vi.mock('@/components/view/TasksView', () => ({
+  TasksView: () => <div data-testid="tasks-view">TasksView</div>,
+}))
+
 vi.mock('@/components/layout/Editor', () => ({
   Editor: () => <div data-testid="editor-view">Editor</div>,
+}))
+
+vi.mock('@/components/view/DeadlineView', () => ({
+  DeadlineView: () => <div data-testid="deadline-view">DeadlineView</div>,
 }))
 
 // 기본 props 생성
@@ -86,49 +95,49 @@ describe('ViewRouter', () => {
   describe('뷰 타입별 렌더링', () => {
     it('students 뷰: StudentListView 렌더링', () => {
       const view: View = { type: 'students' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('student-list-view')).toBeInTheDocument()
     })
 
     it('dashboard 뷰: Dashboard 렌더링', () => {
       const view: View = { type: 'dashboard' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('dashboard-view')).toBeInTheDocument()
     })
 
     it('weekly 뷰: WeeklySchedule 렌더링', () => {
       const view: View = { type: 'weekly' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('weekly-view')).toBeInTheDocument()
     })
 
     it('calendar 뷰 (날짜 없음): CalendarView 렌더링', () => {
       const view: View = { type: 'calendar' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('calendar-view')).toBeInTheDocument()
     })
 
     it('기본 뷰 (all, today, todo 등): Editor 렌더링', () => {
       const view: View = { type: 'all' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('editor-view')).toBeInTheDocument()
     })
 
     it('tag 뷰: Editor 렌더링', () => {
       const view: View = { type: 'tag', tagId: 'tag-1' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('editor-view')).toBeInTheDocument()
     })
 
     it('calendar 뷰 (날짜 있음): Editor 렌더링', () => {
       const view: View = { type: 'calendar', date: '2025-01-25' }
-      render(<ViewRouter view={view} {...createDefaultProps()} />)
+      render(<BlockProvider><ViewRouter view={view} {...createDefaultProps()} /></BlockProvider>)
 
       expect(screen.getByTestId('editor-view')).toBeInTheDocument()
     })

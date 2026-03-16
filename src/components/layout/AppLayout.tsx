@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useCallback, useState, useEffect } from "react";
-import { Sidebar } from "./Sidebar";
+import { TabBar } from "./TabBar";
+import { TagFilterChips } from "./TagFilterChips";
 import { ViewRouter } from "./ViewRouter";
 import { SearchModal } from "./SearchModal";
 import { NoteView } from "@/components/view";
@@ -12,11 +13,14 @@ import { useBlockTypes } from "@/hooks/useBlockTypes";
 import { useCustomViews } from "@/hooks/useCustomViews";
 import { useView, filterBlocksByView } from "@/hooks/useView";
 import { useStudents } from "@/hooks/useStudents";
-import { VIEW_LABELS, ViewType } from "@/types/view";
+import { TabType, TAB_TO_VIEW, VIEW_LABELS, ViewType } from "@/types/view";
 import { DEFAULT_PROPERTIES } from "@/types/property";
 import { getKoreanToday } from "@/lib/dateFormat";
 import { getPropertyByType, getTagIds } from "@/lib/propertyHelpers";
 import { UnifiedInput } from "@/components/input";
+
+// Sidebar에서 사용하던 모달 컴포넌트 (OverflowMenu에서 재사용)
+import { TypeCreateModal, ViewCreateModal } from "./OverflowModals";
 
 // 내부 레이아웃 컴포넌트 (Context 내부)
 function AppLayoutInner() {
@@ -49,11 +53,86 @@ function AppLayoutInner() {
   const [triggerQuickInput, setTriggerQuickInput] = useState(0);
   const [noteViewBlockId, setNoteViewBlockId] = useState<string | null>(null);
 
+  // 탭 상태
+  const [activeTab, setActiveTab] = useState<TabType>("schedule");
+  const [scheduleMode, setScheduleMode] = useState<"weekly" | "calendar" | "deadline">("weekly");
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+
+  // 모달 상태 (더보기 메뉴에서 사용)
+  const [showTypeModal, setShowTypeModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+
   // 뷰 전환 시 NoteView 자동 닫기
   const changeView = useCallback((...args: Parameters<typeof changeViewOriginal>) => {
     setNoteViewBlockId(null);
     changeViewOriginal(...args);
   }, [changeViewOriginal]);
+
+  // 탭 전환 핸들러
+  const handleChangeTab = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+    setNoteViewBlockId(null);
+    setActiveTagFilter(null);
+    const viewType = TAB_TO_VIEW[tab];
+    if (tab === "schedule") {
+      changeViewOriginal(scheduleMode === "weekly" ? "weekly" : scheduleMode === "calendar" ? "calendar" : "deadline");
+    } else {
+      changeViewOriginal(viewType);
+    }
+  }, [changeViewOriginal, scheduleMode]);
+
+  // 시간표 서브 모드 전환
+  const handleChangeScheduleMode = useCallback((mode: "weekly" | "calendar" | "deadline") => {
+    setScheduleMode(mode);
+    setNoteViewBlockId(null);
+    changeViewOriginal(mode === "weekly" ? "weekly" : mode === "calendar" ? "calendar" : "deadline");
+  }, [changeViewOriginal]);
+
+  // 더보기 메뉴 액션
+  const handleOverflowAction = useCallback((action: string) => {
+    switch (action) {
+      case "dashboard":
+        changeViewOriginal("dashboard");
+        setActiveTab("schedule"); // 더보기에서 선택한 뷰는 탭 상태 유지
+        break;
+      case "all":
+        changeViewOriginal("all");
+        break;
+      case "calendar":
+        changeViewOriginal("calendar");
+        setActiveTab("schedule");
+        setScheduleMode("calendar");
+        break;
+      case "deadline":
+        changeViewOriginal("deadline");
+        setActiveTab("schedule");
+        setScheduleMode("deadline");
+        break;
+      case "custom":
+        // 커스텀 뷰 목록 (첫 번째 커스텀 뷰로 이동하거나 생성 모달)
+        if (customViews.length > 0) {
+          selectCustomView(customViews[0].id);
+        } else {
+          setShowViewModal(true);
+        }
+        break;
+      case "types":
+        setShowTypeModal(true);
+        break;
+      case "settings":
+        // TODO: 설정 페이지
+        break;
+      case "sample":
+        if (confirm("모든 데이터를 초기화하고 샘플 데이터를 불러올까요?")) {
+          localStorage.removeItem("blocknote-blocks");
+          localStorage.removeItem("blocknote-tags");
+          localStorage.removeItem("blocknote-types");
+          localStorage.removeItem("blocknote-custom-views");
+          window.location.reload();
+        }
+        break;
+    }
+  }, [changeViewOriginal, customViews, selectCustomView]);
 
   // 키보드 단축키
   useEffect(() => {
@@ -142,11 +221,6 @@ function AppLayoutInner() {
     [contextBlocks, deleteBlock]
   );
 
-  // 블록 카운트 계산
-  const blockCounts = useMemo(() => {
-    return { all: blocks.length };
-  }, [blocks]);
-
   // 학생 선택 핸들러
   const handleSelectStudent = useCallback((studentId: string) => {
     setNoteViewBlockId(studentId);
@@ -218,11 +292,6 @@ function AppLayoutInner() {
     return VIEW_LABELS[view.type];
   }, [view, tags, customViews]);
 
-  // UnifiedInput 표시 여부 결정 (모든 뷰에서 표시)
-  const shouldShowUnifiedInput = useCallback((_viewType: ViewType): boolean => {
-    return true;
-  }, []);
-
   // 캘린더에서 날짜 선택
   const handleCalendarSelectDate = useCallback(
     (date: string) => {
@@ -263,72 +332,116 @@ function AppLayoutInner() {
     [blockTypes, applyType]
   );
 
-  // 체크박스 토글 핸들러 (Dashboard용)
+  // 체크박스 토글 핸들러
   const handleToggleCheckbox = useCallback(
     (blockId: string, checked: boolean) => {
       const block = blocks.find((b) => b.id === blockId);
       if (!block) return;
       const checkboxProp = getPropertyByType(block, "checkbox");
       if (checkboxProp) {
-        updateProperty(blockId, checkboxProp.id, { type: "checkbox", checked });
+        updateProperty(blockId, checkboxProp.id, {
+          type: "checkbox",
+          checked,
+          checkedAt: checked ? new Date().toISOString() : undefined,
+        });
+      } else if (checked) {
+        addProperty(blockId, "checkbox", undefined, {
+          type: "checkbox",
+          checked: true,
+          checkedAt: new Date().toISOString(),
+        });
       }
     },
-    [blocks, updateProperty]
+    [blocks, updateProperty, addProperty]
   );
 
-  return (
-    <div className="flex h-screen">
-      <Sidebar
-        currentView={view}
-        onChangeView={changeView}
-        onSelectCustomView={selectCustomView}
-        tags={tags}
-        blockTypes={blockTypes}
-        customViews={customViews}
-        students={students}
-        blockCounts={blockCounts}
-        onCreateType={handleCreateType}
-        onDeleteType={deleteBlockType}
-        onCreateView={handleCreateView}
-        onDeleteView={deleteView}
-        onSelectStudent={handleSelectStudent}
-      />
+  // 탭별 입력 컨텍스트
+  const inputContext = useMemo((): "schedule" | "tasks" | "students" | "general" => {
+    if (view.type === "dashboard" || view.type === "all" || view.type === "custom") return "general";
+    return activeTab;
+  }, [activeTab, view.type]);
 
-      {/* 메인 영역 */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* 통합 입력창 - 특정 뷰에서만 표시 */}
-        {shouldShowUnifiedInput(view.type) && (
-          <div className="sticky top-0 z-20 bg-background border-b border-border">
+  return (
+    <div className="flex flex-col h-screen">
+      {/* 헤더: 로고 + 입력 + 검색 */}
+      <header className="sticky top-0 z-20 bg-background border-b border-border relative">
+        <div className="flex items-center gap-3 px-4 h-14">
+          {/* 로고 */}
+          <button
+            onClick={() => handleChangeTab("schedule")}
+            className="text-base font-semibold whitespace-nowrap hover:opacity-70 transition-opacity"
+          >
+            DEEP THINKING
+          </button>
+
+          {/* 입력창 */}
+          <div className="flex-1">
             <UnifiedInput
-              placeholder="입력하세요..."
-              showHints={true}
+              placeholder="입력..."
+              showHints={false}
               triggerFocus={triggerQuickInput}
               autoFocus={isLoaded}
               onOpenFullPage={handleSelectBlock}
+              inputContext={inputContext}
             />
           </div>
-        )}
 
-        {/* ViewRouter - props 대폭 감소 (58개 → 17개) */}
+          {/* 검색 버튼 */}
+          <button
+            onClick={() => setShowSearch(true)}
+            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors"
+            aria-label="검색 (Ctrl+P)"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      {/* 탭 바 */}
+      <TabBar
+        activeTab={activeTab}
+        onChangeTab={handleChangeTab}
+        onChangeScheduleMode={handleChangeScheduleMode}
+        scheduleMode={scheduleMode}
+        onOverflowAction={handleOverflowAction}
+      />
+
+      {/* 태그 필터 칩 (할일 탭에서만) */}
+      {activeTab === "tasks" && (
+        <TagFilterChips
+          blocks={blocks}
+          tags={tags}
+          activeTagId={activeTagFilter}
+          onSelectTag={setActiveTagFilter}
+          onCreateTag={createTag}
+        />
+      )}
+
+      {/* ViewRouter */}
+      <div className="flex-1 overflow-hidden">
         <ViewRouter
-        view={view}
-        viewTitle={viewTitle}
-        filteredBlocks={filteredBlocks}
-        tags={tags}
-        blockTypes={blockTypes}
-        students={students}
-        settings={settings}
-        frequentTags={frequentTags}
-        onSelectBlock={handleSelectBlock}
-        onAddStudent={handleAddStudent}
-        onCalendarSelectDate={handleCalendarSelectDate}
-        onAddSchedule={handleAddSchedule}
-        onCreateTag={createTag}
-        onApplyType={handleApplyTypeToBlock}
-        onToggleCheckbox={handleToggleCheckbox}
-        selectedBlockId={focusedBlockId}
-        onClearSelection={() => setFocusedBlockId(null)}
-        triggerQuickInput={triggerQuickInput}
+          view={view}
+          viewTitle={viewTitle}
+          filteredBlocks={filteredBlocks}
+          tags={tags}
+          blockTypes={blockTypes}
+          students={students}
+          settings={settings}
+          frequentTags={frequentTags}
+          onSelectBlock={handleSelectBlock}
+          onAddStudent={handleAddStudent}
+          onCalendarSelectDate={handleCalendarSelectDate}
+          onAddSchedule={handleAddSchedule}
+          onCreateTag={createTag}
+          onApplyType={handleApplyTypeToBlock}
+          onToggleCheckbox={handleToggleCheckbox}
+          selectedBlockId={focusedBlockId}
+          onClearSelection={() => setFocusedBlockId(null)}
+          triggerQuickInput={triggerQuickInput}
+          activeTagFilter={activeTagFilter}
         />
       </div>
 
@@ -358,6 +471,28 @@ function AppLayoutInner() {
           onDeleteBlock={handleDeleteWithNav}
           onNavigate={handleNavigateBlock}
           onClose={() => setNoteViewBlockId(null)}
+        />
+      )}
+
+      {/* 타입 생성 모달 */}
+      {showTypeModal && (
+        <TypeCreateModal
+          onClose={() => setShowTypeModal(false)}
+          onCreate={(name, propertyIds, icon, color) => {
+            handleCreateType(name, propertyIds, icon, color);
+            setShowTypeModal(false);
+          }}
+        />
+      )}
+
+      {/* 뷰 생성 모달 */}
+      {showViewModal && (
+        <ViewCreateModal
+          onClose={() => setShowViewModal(false)}
+          onCreate={(name, icon, color, propertyIds) => {
+            handleCreateView(name, icon, color, propertyIds);
+            setShowViewModal(false);
+          }}
         />
       )}
     </div>

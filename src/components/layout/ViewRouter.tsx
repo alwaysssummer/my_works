@@ -11,6 +11,7 @@ import { Dashboard } from "@/components/view/Dashboard";
 import { WeeklySchedule } from "@/components/view/WeeklySchedule";
 import { CalendarView } from "@/components/view/CalendarView";
 import { DeadlineView } from "@/components/view/DeadlineView";
+import { TasksView } from "@/components/view/TasksView";
 import { Editor } from "@/components/layout/Editor";
 import {
   useBlockContext,
@@ -52,6 +53,9 @@ export interface ViewRouterProps {
   selectedBlockId?: string | null;
   onClearSelection: () => void;
   triggerQuickInput: number;
+
+  // 할일 탭 태그 필터
+  activeTagFilter?: string | null;
 }
 
 export function ViewRouter({
@@ -73,6 +77,7 @@ export function ViewRouter({
   selectedBlockId,
   onClearSelection,
   triggerQuickInput,
+  activeTagFilter,
 }: ViewRouterProps) {
   // Context에서 데이터와 액션 가져오기
   const { blocks, isLoaded, top3Blocks, top3History, selectedBlockIds, isSelectionMode } = useBlockData();
@@ -112,6 +117,21 @@ export function ViewRouter({
         onUpdateBlockName={actions.updateBlockName}
         onToggleCheckbox={onToggleCheckbox}
         onSelectBlock={onSelectBlock}
+      />
+    );
+  }
+
+  // 할일 통합 뷰 (3단 칸반)
+  if (view.type === "tasks") {
+    return (
+      <TasksView
+        blocks={blocks}
+        tags={tags}
+        activeTagFilter={activeTagFilter ?? null}
+        onToggleCheckbox={onToggleCheckbox}
+        onTogglePin={actions.togglePin}
+        onSelectBlock={onSelectBlock}
+        onMoveToColumn={actions.moveToColumn}
       />
     );
   }

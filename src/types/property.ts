@@ -55,7 +55,7 @@ export interface RepeatConfig {
 
 // 속성 값 타입
 export type PropertyValue =
-  | { type: "checkbox"; checked: boolean }
+  | { type: "checkbox"; checked: boolean; checkedAt?: string }
   | { type: "date"; date: string; endDate?: string; time?: string; endTime?: string }
   | { type: "tag"; tagIds: string[] }
   | { type: "text"; text: string }

@@ -1,5 +1,8 @@
 // 뷰 타입
-export type ViewType = "all" | "todo" | "tag" | "calendar" | "weekly" | "custom" | "dashboard" | "students" | "deadline";
+export type ViewType = "all" | "todo" | "tag" | "calendar" | "weekly" | "custom" | "dashboard" | "students" | "deadline" | "tasks";
+
+// 탭 타입
+export type TabType = "schedule" | "tasks" | "students";
 
 export interface View {
   type: ViewType;
@@ -19,6 +22,7 @@ export const VIEW_LABELS: Record<ViewType, string> = {
   custom: "커스텀",
   students: "학생 목록",
   deadline: "마감일",
+  tasks: "할일",
 };
 
 export const VIEW_ICONS: Record<ViewType, string> = {
@@ -31,4 +35,24 @@ export const VIEW_ICONS: Record<ViewType, string> = {
   custom: "▤",
   students: "○",
   deadline: "⏰",
+  tasks: "☐",
+};
+
+// 탭 ↔ ViewType 매핑
+export const TAB_TO_VIEW: Record<TabType, ViewType> = {
+  schedule: "weekly",
+  tasks: "tasks",
+  students: "students",
+};
+
+export const TAB_LABELS: Record<TabType, string> = {
+  schedule: "시간표",
+  tasks: "할일",
+  students: "학생",
+};
+
+export const TAB_ICONS: Record<TabType, string> = {
+  schedule: "▦",
+  tasks: "☐",
+  students: "○",
 };

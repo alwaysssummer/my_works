@@ -60,9 +60,12 @@ export function Sidebar({
     <aside className="w-60 h-screen border-r border-border bg-sidebar flex flex-col">
       {/* 로고 영역 */}
       <div className="h-14 flex items-center px-4 border-b border-border">
-        <h1 className="text-lg font-semibold text-sidebar-foreground">
-          BlockNote
-        </h1>
+        <button
+          onClick={() => onChangeView("weekly")}
+          className="text-lg font-semibold text-sidebar-foreground hover:opacity-70 transition-opacity"
+        >
+          DEEP THINKING
+        </button>
       </div>
 
       {/* 뷰 목록 */}

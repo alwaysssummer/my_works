@@ -119,8 +119,8 @@ export function parseQuickInput(text: string): ParsedInput {
     }
   }
 
-  // 5. 연속된 공백 정리
-  content = content.replace(/\s+/g, " ").trim();
+  // 5. 연속된 공백 정리 (줄바꿈은 유지)
+  content = content.replace(/[^\S\n]+/g, " ").trim();
 
   return {
     content,

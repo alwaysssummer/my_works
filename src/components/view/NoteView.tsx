@@ -163,8 +163,8 @@ export function NoteView({
   const durationProp = getPropertyByType(block, "duration");
   const durationMinutes = getDurationMinutes(block);
 
-  // 속성 개수
-  const propertyCount = block.properties.length;
+  // 속성 개수 (체크박스는 제목 앞에 표시하므로 제외)
+  const propertyCount = block.properties.filter(p => p.propertyType !== "checkbox").length;
 
   // 백링크 (이 블록을 참조하는 블록들)
   const backlinks = useMemo(() => {
@@ -311,6 +311,13 @@ export function NoteView({
     const handleKeyDown = (e: KeyboardEvent) => {
       // ESC: 닫기
       if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      // Ctrl+Enter: 저장하고 닫기
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         onClose();
         return;
@@ -576,6 +583,19 @@ export function NoteView({
         <div className="note-view max-w-5xl mx-auto px-8 py-6 min-h-full">
           {/* 통합 헤더: 제목 | 속성버튼 | + | X */}
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
+            {/* 체크박스가 있으면 제목 앞에 체크 아이콘 표시 */}
+            {checkboxProp && (
+              <button
+                onClick={handleToggleCheckbox}
+                className={`w-6 h-6 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                  isChecked
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "border-border hover:border-primary"
+                }`}
+              >
+                {isChecked && <span className="text-sm">✓</span>}
+              </button>
+            )}
             {/* 제목 (flex-1) */}
             <input
               ref={nameInputRef}
@@ -646,53 +666,7 @@ export function NoteView({
             <div className="mb-6">
               {/* 속성 목록 */}
               <div className="border border-border rounded-lg divide-y divide-border">
-                  {/* 체크박스 */}
-                  {checkboxProp && (
-                    <div className="flex items-center justify-between px-4 py-3 group">
-                      <div className="flex items-center gap-3">
-                        <span className="text-muted-foreground">☑</span>
-                        {editingPropertyId === checkboxProp.id ? (
-                          <input
-                            type="text"
-                            defaultValue={checkboxProp.name}
-                            autoFocus
-                            className="text-sm bg-accent/30 border border-border rounded px-2 py-0.5"
-                            onBlur={(e) => handlePropertyNameChange(checkboxProp.id, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handlePropertyNameChange(checkboxProp.id, e.currentTarget.value);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <button
-                            onClick={() => setEditingPropertyId(checkboxProp.id)}
-                            className="text-sm text-muted-foreground hover:text-foreground"
-                          >
-                            {checkboxProp.name}
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleToggleCheckbox}
-                          className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
-                            isChecked
-                              ? "bg-primary border-primary text-primary-foreground"
-                              : "border-border hover:border-primary"
-                          }`}
-                        >
-                          {isChecked && <span className="text-xs">✓</span>}
-                        </button>
-                        <button
-                          onClick={() => handleRemoveProperty(checkboxProp.id)}
-                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {/* 체크박스: 제목 앞에 토글이 있으므로 속성 영역에서는 숨김 */}
 
                   {/* 날짜 */}
                   {dateProp && (
@@ -1396,6 +1370,8 @@ export function NoteView({
           <div className="flex items-center gap-4">
             <kbd className="px-1 py-0.5 bg-muted rounded">ESC</kbd>
             <span>닫기</span>
+            <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+↵</kbd>
+            <span>저장·닫기</span>
             <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+⌫</kbd>
             <span>삭제</span>
             <span aria-live="polite">자동 저장</span>

@@ -432,7 +432,11 @@ function ClassificationBlockItem({
 
 // 헬퍼 함수
 function extractFirstLine(html: string): string {
-  const text = html.replace(/<[^>]*>/g, "").trim();
+  const text = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .trim();
   return text.split("\n")[0]?.trim() || "";
 }
 
