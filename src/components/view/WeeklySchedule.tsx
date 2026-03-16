@@ -6,7 +6,7 @@ import { PropertyType, Tag } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getBlockTitle } from "@/lib/blockParser";
-import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay, calculateDday } from "@/lib/dateFormat";
+import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay } from "@/lib/dateFormat";
 import { shouldBlockAppearOnDate } from "@/lib/propertyHelpers";
 
 interface WeeklyScheduleProps {
@@ -20,6 +20,7 @@ interface WeeklyScheduleProps {
   onUpdateProperty: (blockId: string, propertyId: string, value: BlockProperty["value"]) => void;
   onDeleteBlock: (id: string) => void;
   onSelectBlock: (blockId: string) => void;
+  onChangeScheduleMode?: (mode: "weekly" | "calendar") => void;
 }
 
 interface ScheduleEvent {
@@ -49,6 +50,7 @@ export function WeeklySchedule({
   onUpdateProperty,
   onDeleteBlock,
   onSelectBlock,
+  onChangeScheduleMode,
 }: WeeklyScheduleProps) {
   // 현재 주의 시작일 (월요일 기준, 한국 시간)
   const [weekStart, setWeekStart] = useState(() => {
@@ -102,6 +104,16 @@ export function WeeklySchedule({
     return GRADE_COLORS.미지정;
   }, [blocks, tags]);
 
+  // 모바일 감지
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   // 주간 날짜 배열 (월~일)
   const weekDays = useMemo(() => {
     const days: Date[] = [];
@@ -112,6 +124,17 @@ export function WeeklySchedule({
     }
     return days;
   }, [weekStart]);
+
+  // 모바일: 오늘 기준 2일만 표시
+  const visibleDays = useMemo(() => {
+    if (!isMobile) return weekDays;
+    const now = getKoreanNow();
+    const todayDate = new Date(now);
+    todayDate.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(todayDate);
+    tomorrow.setDate(todayDate.getDate() + 1);
+    return [todayDate, tomorrow];
+  }, [isMobile, weekDays]);
 
   // 시간 슬롯 배열 (10분 단위)
   const timeSlots = useMemo(() => {
@@ -383,39 +406,20 @@ export function WeeklySchedule({
     return `${start.getFullYear()}년 ${startMonth}월 ${start.getDate()}일 - ${endMonth}월 ${end.getDate()}일`;
   }, [weekDays]);
 
-  // 날짜별 마감 블록 (person 속성 없는 블록)
-  const deadlinesByDate = useMemo(() => {
-    const result: Record<string, { block: Block; dday: ReturnType<typeof calculateDday> }[]> = {};
-
-    blocks.forEach((block) => {
-      const dateProp = block.properties.find((p) => p.propertyType === "date");
-      if (!dateProp || dateProp.value.type !== "date" || !dateProp.value.date) return;
-      // person 속성이 있으면 수업이므로 제외
-      if (block.properties.some((p) => p.propertyType === "person")) return;
-
-      const dateStr = dateProp.value.date;
-      if (!result[dateStr]) {
-        result[dateStr] = [];
-      }
-      result[dateStr].push({
-        block,
-        dday: calculateDday(dateStr),
-      });
-    });
-
-    return result;
-  }, [blocks]);
-
-  const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
+  const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+  const getDayName = (date: Date) => dayNames[date.getDay()];
 
   return (
     <main className="flex-1 h-screen overflow-hidden bg-background flex flex-col">
       {/* 헤더 */}
       <header className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">▦</span>
-          <span className="font-medium">주간 시간표</span>
-        </div>
+        <button
+          onClick={() => onChangeScheduleMode?.("calendar")}
+          className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+          title="월간 뷰로 전환"
+        >
+          Month
+        </button>
         <div className="flex items-center gap-2">
           <button
             onClick={goToPrevWeek}
@@ -443,15 +447,15 @@ export function WeeklySchedule({
 
       {/* 타임테이블 */}
       <div className="flex-1 overflow-auto">
-        <div className="min-w-[800px]">
+        <div className={isMobile ? "" : "min-w-[800px]"}>
           {/* 요일 헤더 */}
           <div className="flex border-b border-border sticky top-0 bg-background z-10">
             <div className="w-16 flex-shrink-0 border-r border-border" />
-            {weekDays.map((date, index) => {
+            {visibleDays.map((date) => {
               const dateStr = toKoreanDateString(date);
               const isToday = dateStr === today;
-              const isSunday = index === 6;
-              const isSaturday = index === 5;
+              const isSunday = date.getDay() === 0;
+              const isSaturday = date.getDay() === 6;
 
               return (
                 <div
@@ -469,7 +473,7 @@ export function WeeklySchedule({
                         : "text-muted-foreground"
                     }`}
                   >
-                    {dayNames[index]}
+                    {getDayName(date)}
                   </div>
                   <div
                     className={`text-lg font-semibold ${
@@ -484,49 +488,6 @@ export function WeeklySchedule({
                   >
                     {date.getDate()}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 마감 행 */}
-          <div className="flex border-b border-border bg-amber-50/50">
-            <div className="w-16 flex-shrink-0 border-r border-border flex items-center justify-end pr-2">
-              <span className="text-xs font-medium text-amber-700">마감</span>
-            </div>
-            {weekDays.map((date) => {
-              const dateStr = toKoreanDateString(date);
-              const deadlines = deadlinesByDate[dateStr] || [];
-              const isToday = dateStr === today;
-
-              return (
-                <div
-                  key={`deadline-${dateStr}`}
-                  className={`flex-1 min-h-[40px] p-1 border-r border-border last:border-r-0 ${
-                    isToday ? "bg-amber-100/50" : ""
-                  }`}
-                >
-                  {deadlines.slice(0, 2).map(({ block, dday }) => (
-                    <div
-                      key={block.id}
-                      onClick={() => onSelectBlock(block.id)}
-                      className={`text-[10px] px-1.5 py-0.5 mb-0.5 rounded cursor-pointer truncate ${
-                        dday.isToday
-                          ? "bg-red-100 text-red-700 font-medium"
-                          : dday.isPast
-                          ? "bg-gray-100 text-gray-500"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                      title={`${block.name || getBlockTitle(block.content, 20)} (${dday.label})`}
-                    >
-                      {block.name || getBlockTitle(block.content, 8)} {dday.label}
-                    </div>
-                  ))}
-                  {deadlines.length > 2 && (
-                    <div className="text-[10px] text-amber-600 px-1">
-                      +{deadlines.length - 2}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -557,7 +518,7 @@ export function WeeklySchedule({
             </div>
 
             {/* 요일별 컬럼 */}
-            {weekDays.map((date, dayIndex) => {
+            {visibleDays.map((date, dayIndex) => {
               const dateStr = toKoreanDateString(date);
               const isToday = dateStr === today;
               const events = getEventsForDate(date);

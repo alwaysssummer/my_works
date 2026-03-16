@@ -45,13 +45,15 @@ export function MobileTodayView() {
     return `${date.getMonth() + 1}/${date.getDate()} (${dayNames[date.getDay()]})`;
   }, [selectedDate]);
 
-  // 화면 로드시 입력창 자동 포커스
+  // 화면 로드시 & 상세에서 복귀시 입력창 자동 포커스
   useEffect(() => {
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!selectedBlockId) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedBlockId]);
 
   // 슬롯 입력 모드시 포커스
   useEffect(() => {

@@ -355,6 +355,13 @@ function AppLayoutInner() {
     [blocks, updateProperty, addProperty]
   );
 
+  // 제출 후 할일 탭으로 자동 이동
+  const handleAfterSubmit = useCallback(() => {
+    if (activeTab !== "tasks") {
+      handleChangeTab("tasks");
+    }
+  }, [activeTab, handleChangeTab]);
+
   // 탭별 입력 컨텍스트
   const inputContext = useMemo((): "schedule" | "tasks" | "students" | "general" => {
     if (view.type === "dashboard" || view.type === "all" || view.type === "custom") return "general";
@@ -364,18 +371,18 @@ function AppLayoutInner() {
   return (
     <div className="flex flex-col h-screen">
       {/* 헤더: 로고 + 입력 + 검색 */}
-      <header className="sticky top-0 z-20 bg-background border-b border-border relative">
+      <header className="order-last lg:order-none lg:sticky lg:top-0 z-20 bg-background border-t lg:border-t-0 lg:border-b border-border relative pb-[env(safe-area-inset-bottom)] lg:pb-0">
         <div className="flex items-center gap-3 px-4 h-14">
-          {/* 로고 */}
+          {/* 로고 — 모바일에서 숨김 */}
           <button
             onClick={() => handleChangeTab("schedule")}
-            className="text-base font-semibold whitespace-nowrap hover:opacity-70 transition-opacity"
+            className="hidden lg:block text-base font-semibold whitespace-nowrap hover:opacity-70 transition-opacity"
           >
             DEEP THINKING
           </button>
 
           {/* 입력창 */}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <UnifiedInput
               placeholder="입력..."
               showHints={false}
@@ -383,6 +390,7 @@ function AppLayoutInner() {
               autoFocus={isLoaded}
               onOpenFullPage={handleSelectBlock}
               inputContext={inputContext}
+              onAfterSubmit={handleAfterSubmit}
             />
           </div>
 
@@ -400,28 +408,30 @@ function AppLayoutInner() {
         </div>
       </header>
 
-      {/* 탭 바 */}
-      <TabBar
-        activeTab={activeTab}
-        onChangeTab={handleChangeTab}
-        onChangeScheduleMode={handleChangeScheduleMode}
-        scheduleMode={scheduleMode}
-        onOverflowAction={handleOverflowAction}
-      />
-
-      {/* 태그 필터 칩 (할일 탭에서만) */}
-      {activeTab === "tasks" && (
-        <TagFilterChips
-          blocks={blocks}
-          tags={tags}
-          activeTagId={activeTagFilter}
-          onSelectTag={setActiveTagFilter}
-          onCreateTag={createTag}
+      {/* 탭 바 + 태그 필터 */}
+      <div className="order-3 lg:order-none">
+        <TabBar
+          activeTab={activeTab}
+          onChangeTab={handleChangeTab}
+          onChangeScheduleMode={handleChangeScheduleMode}
+          scheduleMode={scheduleMode}
+          onOverflowAction={handleOverflowAction}
         />
-      )}
+
+        {/* 태그 필터 칩 (할일 탭에서만) */}
+        {activeTab === "tasks" && (
+          <TagFilterChips
+            blocks={blocks}
+            tags={tags}
+            activeTagId={activeTagFilter}
+            onSelectTag={setActiveTagFilter}
+            onCreateTag={createTag}
+          />
+        )}
+      </div>
 
       {/* ViewRouter */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden order-first lg:order-none">
         <ViewRouter
           view={view}
           viewTitle={viewTitle}
@@ -442,6 +452,7 @@ function AppLayoutInner() {
           onClearSelection={() => setFocusedBlockId(null)}
           triggerQuickInput={triggerQuickInput}
           activeTagFilter={activeTagFilter}
+          onChangeScheduleMode={handleChangeScheduleMode}
         />
       </div>
 

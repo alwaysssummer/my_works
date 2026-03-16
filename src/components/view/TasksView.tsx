@@ -58,6 +58,7 @@ export function TasksView({
   onMoveToColumn,
 }: TasksViewProps) {
   const [activeBlock, setActiveBlock] = useState<Block | null>(null);
+  const [activeColumn, setActiveColumn] = useState<BlockColumn>("inbox");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -137,9 +138,12 @@ export function TasksView({
       if (!over) return;
 
       const blockId = active.id as string;
-      const targetColumn = over.id as BlockColumn;
       const block = blockMap.get(blockId);
       if (!block) return;
+
+      // tab-focus, tab-inbox, tab-queue 또는 focus, inbox, queue
+      const overId = over.id as string;
+      const targetColumn = (overId.startsWith("tab-") ? overId.slice(4) : overId) as BlockColumn;
 
       const currentColumn = block.column || "inbox";
       if (currentColumn === targetColumn) return;
@@ -157,20 +161,34 @@ export function TasksView({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-3 gap-3 h-full p-3">
-          {COLUMN_ORDER.map((column) => (
+        <div className="flex flex-col h-full">
+          {/* 탭 헤더 */}
+          <div className="flex border-b flex-shrink-0">
+            {COLUMN_ORDER.map((column) => (
+              <DroppableTab
+                key={column}
+                column={column}
+                label={COLUMN_INFO[column].label}
+                count={columnBlocks[column].length}
+                isActive={activeColumn === column}
+                onClick={() => setActiveColumn(column)}
+              />
+            ))}
+          </div>
+
+          {/* 선택된 탭의 블록 */}
+          <div className="flex-1 overflow-hidden p-3">
             <KanbanColumn
-              key={column}
-              column={column}
-              label={COLUMN_INFO[column].label}
-              emptyText={COLUMN_INFO[column].emptyText}
-              blocks={columnBlocks[column]}
+              key={activeColumn}
+              column={activeColumn}
+              emptyText={COLUMN_INFO[activeColumn].emptyText}
+              blocks={columnBlocks[activeColumn]}
               allTags={tags}
               onBlockClick={onSelectBlock}
               onToggleCheckbox={onToggleCheckbox}
               onTogglePin={onTogglePin}
             />
-          ))}
+          </div>
         </div>
 
         <DragOverlay dropAnimation={null}>
@@ -183,10 +201,41 @@ export function TasksView({
   );
 }
 
+// 드롭 가능한 탭 헤더
+interface DroppableTabProps {
+  column: BlockColumn;
+  label: string;
+  count: number;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+function DroppableTab({ column, label, count, isActive, onClick }: DroppableTabProps) {
+  const { isOver, setNodeRef } = useDroppable({ id: `tab-${column}` });
+
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={onClick}
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors ${
+        isActive
+          ? "border-b-2 border-primary text-primary"
+          : "text-muted-foreground hover:text-foreground"
+      } ${isOver ? "bg-primary/10" : ""}`}
+    >
+      {label}
+      <span className={`text-xs px-1.5 py-0.5 rounded ${
+        isActive ? "bg-primary/15" : "bg-accent"
+      }`}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
 // 칸반 열 컴포넌트
 interface KanbanColumnProps {
   column: BlockColumn;
-  label: string;
   emptyText: string;
   blocks: Block[];
   allTags: Tag[];
@@ -197,7 +246,6 @@ interface KanbanColumnProps {
 
 function KanbanColumn({
   column,
-  label,
   emptyText,
   blocks,
   allTags,
@@ -210,20 +258,12 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col h-full border rounded-lg bg-card overflow-hidden transition-colors ${
-        isOver ? "border-primary/50 bg-primary/5" : ""
+      className={`flex flex-col h-full rounded-lg overflow-hidden transition-colors ${
+        isOver ? "bg-primary/5" : ""
       }`}
     >
-      {/* 열 헤더 */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b flex-shrink-0">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="ml-auto text-xs font-normal bg-accent px-1.5 py-0.5 rounded">
-          {blocks.length}
-        </span>
-      </div>
-
       {/* 블록 리스트 */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+      <div className="flex-1 overflow-y-auto space-y-1.5">
         {blocks.length === 0 ? (
           <div className="px-4 py-6 text-sm text-muted-foreground/60 italic text-center">
             {emptyText}

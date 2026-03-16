@@ -187,6 +187,12 @@ interface CalendarViewProps {
   students?: StudentInfo[];
   onSelectDate: (date: string) => void;
   onAddSchedule?: (date: string, content: string, studentId?: string, isRepeat?: boolean, time?: string) => void;
+  /** 외부에서 제어하는 현재 월 (controlled mode) */
+  currentMonth?: { year: number; month: number };
+  /** 외부에서 월 변경 콜백 (controlled mode) */
+  onMonthChange?: (month: { year: number; month: number }) => void;
+  /** 헤더(월 네비게이션) 숨김 */
+  hideHeader?: boolean;
 }
 
 export function CalendarView({
@@ -195,11 +201,17 @@ export function CalendarView({
   students = [],
   onSelectDate,
   onAddSchedule,
+  currentMonth: controlledMonth,
+  onMonthChange,
+  hideHeader = false,
 }: CalendarViewProps) {
-  const [currentMonth, setCurrentMonth] = useState(() => {
+  const [internalMonth, setInternalMonth] = useState(() => {
     const parts = getKoreanDateParts();
     return { year: parts.year, month: parts.month - 1 }; // month는 0-indexed
   });
+
+  const currentMonth = controlledMonth ?? internalMonth;
+  const setCurrentMonth = onMonthChange ?? setInternalMonth;
 
   // 일정 추가 모달 상태
   const [showAddModal, setShowAddModal] = useState(false);
@@ -281,28 +293,26 @@ export function CalendarView({
   }, [currentMonth]);
 
   const goToPrevMonth = useCallback(() => {
-    setCurrentMonth((prev) => {
-      if (prev.month === 0) {
-        return { year: prev.year - 1, month: 11 };
-      }
-      return { year: prev.year, month: prev.month - 1 };
-    });
-  }, []);
+    setCurrentMonth(
+      currentMonth.month === 0
+        ? { year: currentMonth.year - 1, month: 11 }
+        : { year: currentMonth.year, month: currentMonth.month - 1 }
+    );
+  }, [currentMonth, setCurrentMonth]);
 
   const goToNextMonth = useCallback(() => {
-    setCurrentMonth((prev) => {
-      if (prev.month === 11) {
-        return { year: prev.year + 1, month: 0 };
-      }
-      return { year: prev.year, month: prev.month + 1 };
-    });
-  }, []);
+    setCurrentMonth(
+      currentMonth.month === 11
+        ? { year: currentMonth.year + 1, month: 0 }
+        : { year: currentMonth.year, month: currentMonth.month + 1 }
+    );
+  }, [currentMonth, setCurrentMonth]);
 
   const goToToday = useCallback(() => {
     const parts = getKoreanDateParts();
     setCurrentMonth({ year: parts.year, month: parts.month - 1 });
     onSelectDate(today);
-  }, [today, onSelectDate]);
+  }, [today, onSelectDate, setCurrentMonth]);
 
   // 날짜 클릭 핸들러
   const handleDateClick = useCallback(
@@ -357,35 +367,37 @@ export function CalendarView({
 
   return (
     <div className="p-4">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={goToPrevMonth}
-          aria-label="이전 달"
-          className="p-2 hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span aria-hidden="true">◀</span>
-        </button>
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold" aria-live="polite">
-            {currentMonth.year}년 {monthNames[currentMonth.month]}
-          </h2>
+      {/* 헤더 (외부에서 렌더링할 경우 숨김) */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between mb-4">
           <button
-            onClick={goToToday}
-            aria-label="오늘 날짜로 이동"
-            className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={goToPrevMonth}
+            aria-label="이전 달"
+            className="p-2 hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
           >
-            오늘
+            <span aria-hidden="true">◀</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold" aria-live="polite">
+              {currentMonth.year}년 {monthNames[currentMonth.month]}
+            </h2>
+            <button
+              onClick={goToToday}
+              aria-label="오늘 날짜로 이동"
+              className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              오늘
+            </button>
+          </div>
+          <button
+            onClick={goToNextMonth}
+            aria-label="다음 달"
+            className="p-2 hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span aria-hidden="true">▶</span>
           </button>
         </div>
-        <button
-          onClick={goToNextMonth}
-          aria-label="다음 달"
-          className="p-2 hover:bg-accent rounded focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span aria-hidden="true">▶</span>
-        </button>
-      </div>
+      )}
 
       {/* 요일 헤더 */}
       <div className="grid grid-cols-7 gap-1 mb-1">

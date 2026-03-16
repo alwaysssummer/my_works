@@ -7,6 +7,9 @@ import { Tag } from "@/types/property";
 import { Plus, Phone, Mail, ChevronRight, Search, X, Users, BookOpen, UserPlus, Trophy, Trash2, Tag as TagIcon } from "lucide-react";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
+import { useBlockActions } from "@/contexts/BlockContext";
+import { useTags } from "@/hooks/useTags";
+import { NoteView } from "@/components/view/NoteView";
 
 interface StudentListViewProps {
   blocks: Block[];
@@ -272,10 +275,61 @@ export function StudentListView({
   const isAllSelected = filteredStudents.length > 0 && selectedIds.size === filteredStudents.length;
   const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredStudents.length;
 
+  // Context에서 NoteView 액션 가져오기
+  const actions = useBlockActions();
+  const { tags: allTags, createTag } = useTags();
+
+  // 모바일 감지
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // 인라인 NoteView 선택 상태
+  const [inlineStudentId, setInlineStudentId] = useState<string | null>(null);
+
+  const inlineBlock = useMemo(() => {
+    if (!inlineStudentId) return null;
+    return blocks.find((b) => b.id === inlineStudentId) || null;
+  }, [inlineStudentId, blocks]);
+
+  // 삭제된 학생이면 선택 해제
+  useEffect(() => {
+    if (inlineStudentId && !blocks.find((b) => b.id === inlineStudentId)) {
+      setInlineStudentId(null);
+    }
+  }, [blocks, inlineStudentId]);
+
+  // 클릭 핸들러 분기
+  const handleStudentClick = useCallback((studentId: string) => {
+    const isSmallScreen = window.matchMedia("(max-width: 1023px)").matches;
+    if (isSmallScreen) {
+      onSelectBlock(studentId);
+    } else {
+      setInlineStudentId(studentId);
+    }
+  }, [onSelectBlock]);
+
+  // 인라인 모드에서 삭제 시 다음 학생 자동 선택
+  const handleInlineDelete = useCallback((blockId: string) => {
+    const idx = filteredStudents.findIndex((s) => s.id === blockId);
+    actions.deleteBlock(blockId);
+    if (filteredStudents.length > 1) {
+      const nextIdx = idx < filteredStudents.length - 1 ? idx + 1 : idx - 1;
+      setInlineStudentId(filteredStudents[nextIdx]?.id || null);
+    } else {
+      setInlineStudentId(null);
+    }
+  }, [filteredStudents, actions]);
+
   // 키보드 탐색 훅
   const { focusedId, listRef } = useListNavigation({
     items: filteredStudents,
-    onSelect: onSelectBlock,
+    onSelect: handleStudentClick,
     enabled: true,
   });
 
@@ -305,10 +359,10 @@ export function StudentListView({
         </span>
       </div>
 
-      {/* 2단 레이아웃 */}
+      {/* 3단 레이아웃 (데스크톱) / 1단 (모바일) */}
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
-        {/* 좌측: 학생 목록 (메인) */}
-        <div className="flex-1 lg:overflow-auto flex flex-col">
+        {/* 좌: 학생 목록 — 인라인 활성 시 축소 */}
+        <div className="lg:w-72 lg:shrink-0 lg:overflow-auto flex flex-col">
           {/* 태그 칩 필터 */}
           <div className="px-4 pt-4 pb-2 overflow-x-auto">
             <div className="flex gap-2">
@@ -371,9 +425,10 @@ export function StudentListView({
             <button
               onClick={onAddStudent}
               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
+              title="학생 추가"
             >
               <Plus className="w-4 h-4" />
-              학생 추가
+              <span className={inlineBlock ? "hidden" : ""}>학생 추가</span>
             </button>
             {selectedIds.size > 0 && (
               <div className="flex items-center gap-2">
@@ -429,9 +484,11 @@ export function StudentListView({
                     <div
                       key={student.id}
                       data-list-item
-                      onClick={() => onSelectBlock(student.id)}
+                      onClick={() => handleStudentClick(student.id)}
                       className={`px-4 py-3 cursor-pointer transition-colors flex items-center gap-3 group ${
-                        isFocused
+                        inlineStudentId === student.id
+                          ? "bg-primary/10 border-l-2 border-l-primary"
+                          : isFocused
                           ? "bg-primary/10 ring-2 ring-inset ring-primary/50"
                           : selectedIds.has(student.id)
                           ? "bg-blue-50"
@@ -500,8 +557,39 @@ export function StudentListView({
           </div>
         </div>
 
-        {/* 우측: 사이드바 */}
-        <aside className="hidden lg:block w-80 border-l border-border lg:overflow-auto">
+        {/* 중앙: 인라인 NoteView (데스크톱 전용) */}
+        <div className="hidden lg:flex flex-col flex-1 border-l border-border overflow-hidden">
+          {inlineBlock ? (
+            <NoteView
+              key={inlineStudentId}
+              variant="inline"
+              block={inlineBlock}
+              allTags={allTags}
+              blockTypes={blockTypes}
+              contextBlocks={blocks}
+              onUpdateBlock={actions.updateBlock}
+              onUpdateBlockName={actions.updateBlockName}
+              onAddProperty={actions.addProperty}
+              onUpdateProperty={actions.updateProperty}
+              onUpdatePropertyName={actions.updatePropertyName}
+              onRemoveProperty={actions.removeProperty}
+              onCreateTag={createTag}
+              onMoveToColumn={actions.moveToColumn}
+              onDeleteBlock={handleInlineDelete}
+              onClose={() => setInlineStudentId(null)}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <div className="text-4xl mb-3 opacity-30">←</div>
+                <p className="text-sm">학생을 선택하면 여기에 상세 정보가 표시돼요</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 우: 통계 사이드바 */}
+        <aside className="hidden lg:block w-80 border-l border-border lg:overflow-auto shrink-0">
           <div className="sticky top-0 p-4 space-y-4">
             {/* 요약 통계 카드 2x2 */}
             <div className="grid grid-cols-2 gap-3">
@@ -561,7 +649,7 @@ export function StudentListView({
                     return (
                       <div
                         key={item.student.id}
-                        onClick={() => onSelectBlock(item.student.id)}
+                        onClick={() => handleStudentClick(item.student.id)}
                         className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
                       >
                         <span className={`text-sm font-bold ${

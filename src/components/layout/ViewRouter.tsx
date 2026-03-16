@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback } from "react";
+import { useState, useCallback } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getKoreanDateParts, getKoreanToday } from "@/lib/dateFormat";
 import { View } from "@/types/view";
 import { Block, Top3History, BlockColumn } from "@/types/block";
 import { BlockType } from "@/types/blockType";
@@ -56,6 +58,9 @@ export interface ViewRouterProps {
 
   // 할일 탭 태그 필터
   activeTagFilter?: string | null;
+
+  // 시간표 모드 전환
+  onChangeScheduleMode?: (mode: "weekly" | "calendar" | "deadline") => void;
 }
 
 export function ViewRouter({
@@ -78,11 +83,42 @@ export function ViewRouter({
   onClearSelection,
   triggerQuickInput,
   activeTagFilter,
+  onChangeScheduleMode,
 }: ViewRouterProps) {
   // Context에서 데이터와 액션 가져오기
   const { blocks, isLoaded, top3Blocks, top3History, selectedBlockIds, isSelectionMode } = useBlockData();
   const actions = useBlockActions();
   const navigation = useBlockNavigation();
+
+  // 캘린더 월 상태 (ViewRouter에서 관리 → 헤더에 네비게이션 표시)
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const parts = getKoreanDateParts();
+    return { year: parts.year, month: parts.month - 1 };
+  });
+
+  const MONTH_NAMES = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
+
+  const goToPrevMonth = useCallback(() => {
+    setCalendarMonth((prev) =>
+      prev.month === 0
+        ? { year: prev.year - 1, month: 11 }
+        : { year: prev.year, month: prev.month - 1 }
+    );
+  }, []);
+
+  const goToNextMonth = useCallback(() => {
+    setCalendarMonth((prev) =>
+      prev.month === 11
+        ? { year: prev.year + 1, month: 0 }
+        : { year: prev.year, month: prev.month + 1 }
+    );
+  }, []);
+
+  const goToCalendarToday = useCallback(() => {
+    const parts = getKoreanDateParts();
+    setCalendarMonth({ year: parts.year, month: parts.month - 1 });
+    onCalendarSelectDate(getKoreanToday());
+  }, [onCalendarSelectDate]);
 
   // 다중 블록 삭제 핸들러
   const handleDeleteBlocks = useCallback((blockIds: string[]) => {
@@ -150,6 +186,7 @@ export function ViewRouter({
         onUpdateProperty={actions.updateProperty}
         onDeleteBlock={actions.deleteBlock}
         onSelectBlock={onSelectBlock}
+        onChangeScheduleMode={onChangeScheduleMode}
       />
     );
   }
@@ -169,11 +206,39 @@ export function ViewRouter({
   if (view.type === "calendar" && !view.date) {
     return (
       <main className="flex-1 h-screen overflow-auto bg-background">
-        <header className="h-14 flex items-center justify-between px-4 border-b border-border">
-          <div className="text-sm font-medium">{viewTitle}</div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">날짜 선택</span>
+        <header className="h-14 flex items-center px-4 border-b border-border">
+          <button
+            onClick={() => onChangeScheduleMode?.("weekly")}
+            className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors flex-shrink-0"
+            title="주간 뷰로 전환"
+          >
+            Week
+          </button>
+          <div className="flex-1 flex items-center justify-center gap-2">
+            <button
+              onClick={goToPrevMonth}
+              className="p-1.5 hover:bg-accent rounded-lg transition-colors"
+              aria-label="이전 달"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold min-w-[100px] text-center">
+              {calendarMonth.year}년 {MONTH_NAMES[calendarMonth.month]}
+            </span>
+            <button
+              onClick={goToNextMonth}
+              className="p-1.5 hover:bg-accent rounded-lg transition-colors"
+              aria-label="다음 달"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
+          <button
+            onClick={goToCalendarToday}
+            className="px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 flex-shrink-0"
+          >
+            오늘
+          </button>
         </header>
         <CalendarView
           blocks={blocks}
@@ -181,6 +246,9 @@ export function ViewRouter({
           students={students}
           onSelectDate={onCalendarSelectDate}
           onAddSchedule={onAddSchedule}
+          currentMonth={calendarMonth}
+          onMonthChange={setCalendarMonth}
+          hideHeader
         />
       </main>
     );

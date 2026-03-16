@@ -16,12 +16,6 @@ interface TabBarProps {
 
 const TABS: TabType[] = ["schedule", "tasks", "students"];
 
-const SCHEDULE_SUBMODES = [
-  { key: "weekly" as const, icon: "▦", label: "주간" },
-  { key: "calendar" as const, icon: "◇", label: "월간" },
-  { key: "deadline" as const, icon: "⏰", label: "마감" },
-];
-
 export function TabBar({
   activeTab,
   onChangeTab,
@@ -45,7 +39,7 @@ export function TabBar({
   }, [showOverflow]);
 
   return (
-    <div className="border-b border-border bg-background">
+    <div className="border-t lg:border-t-0 lg:border-b border-border bg-background">
       <div className="flex items-center">
         {/* 3탭 */}
         {TABS.map((tab) => {
@@ -86,7 +80,7 @@ export function TabBar({
           </button>
 
           {showOverflow && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+            <div className="absolute right-0 bottom-full mb-1 lg:bottom-auto lg:top-full lg:mb-0 lg:mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
               {[
                 { key: "dashboard", icon: "⌂", label: "대시보드" },
                 { key: "all", icon: "☰", label: "전체 보기" },
@@ -120,24 +114,6 @@ export function TabBar({
         </div>
       </div>
 
-      {/* 시간표 탭 서브 모드 */}
-      {activeTab === "schedule" && (
-        <div className="flex items-center gap-1 px-4 pb-2">
-          {SCHEDULE_SUBMODES.map((mode) => (
-            <button
-              key={mode.key}
-              onClick={() => onChangeScheduleMode?.(mode.key)}
-              className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
-                scheduleMode === mode.key
-                  ? "bg-foreground text-background font-medium"
-                  : "text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              {mode.icon} {mode.label}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

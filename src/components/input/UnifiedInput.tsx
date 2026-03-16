@@ -6,11 +6,13 @@ import {
   useEffect,
   useRef,
   KeyboardEvent,
+  ClipboardEvent,
 } from "react";
 import { useBlockActions } from "@/contexts/BlockContext";
 import { processUnifiedInput } from "@/lib/unifiedInputProcessor";
 import { parseQuickInput, hasQuickProperties } from "@/lib/parseQuickInput";
 import { processBlockInput } from "@/lib/blockDefaults";
+import { saveImage, getImage, deleteImage } from "@/lib/imageStorage";
 
 interface UnifiedInputProps {
   /** 플레이스홀더 텍스트 */
@@ -25,6 +27,8 @@ interface UnifiedInputProps {
   onOpenFullPage?: (blockId: string) => void;
   /** 탭별 입력 컨텍스트 */
   inputContext?: "schedule" | "tasks" | "students" | "general";
+  /** 제출 완료 후 콜백 (탭 이동 등) */
+  onAfterSubmit?: () => void;
 }
 
 /**
@@ -44,6 +48,7 @@ export function UnifiedInput({
   autoFocus = false,
   onOpenFullPage,
   inputContext = "general",
+  onAfterSubmit,
 }: UnifiedInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -51,6 +56,7 @@ export function UnifiedInput({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [isPinToggled, setIsPinToggled] = useState(false);
+  const [pastedImages, setPastedImages] = useState<Array<{ id: string; url: string }>>([]);
 
   const { addBlock, addProperty, togglePin } = useBlockActions();
 
@@ -142,15 +148,67 @@ export function UnifiedInput({
     [addProperty]
   );
 
+  // 이미지 붙여넣기 핸들러
+  const handlePaste = useCallback(
+    async (e: ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/")) {
+          e.preventDefault();
+          const blob = items[i].getAsFile();
+          if (!blob) continue;
+
+          // input 상태일 때 자동으로 textarea로 전환
+          if (!isFocused) {
+            setIsFocused(true);
+          }
+
+          const id = await saveImage(blob);
+          const url = await getImage(id);
+          if (url) {
+            setPastedImages((prev) => [...prev, { id, url }]);
+          }
+          break; // 한 번에 하나의 이미지만 처리
+        }
+      }
+    },
+    [isFocused]
+  );
+
+  // 이미지 삭제
+  const handleRemoveImage = useCallback(async (imageId: string) => {
+    await deleteImage(imageId);
+    setPastedImages((prev) => prev.filter((img) => img.id !== imageId));
+  }, []);
+
+  // 모든 붙여넣기 이미지 정리
+  const clearPastedImages = useCallback(async () => {
+    for (const img of pastedImages) {
+      await deleteImage(img.id);
+    }
+    setPastedImages([]);
+  }, [pastedImages]);
+
+  // 이미지 HTML 생성
+  const buildImageHtml = useCallback(() => {
+    if (pastedImages.length === 0) return "";
+    return pastedImages
+      .map((img) => `<img src="${img.url}" alt="image-${img.id}">`)
+      .join("");
+  }, [pastedImages]);
+
   // 제출 핸들러
   const handleSubmit = useCallback(() => {
-    if (!value.trim()) return;
+    if (!value.trim() && pastedImages.length === 0) return;
 
     const processed = processUnifiedInput(value.trim());
+    const imageHtml = buildImageHtml();
 
     const newBlockId = addBlock(undefined, {
       name: processed.name,
-      content: processed.content,
+      content: (processed.content || "") + imageHtml,
     });
 
     addParsedProperties(newBlockId, processed.properties);
@@ -163,12 +221,17 @@ export function UnifiedInput({
 
     // 초기화
     setValue("");
+    setPastedImages([]);
     // 포커스 유지 — 연속 입력 가능하도록 setIsFocused(false) 제거
-  }, [value, addBlock, addParsedProperties, isPinToggled, togglePin]);
+
+    onAfterSubmit?.();
+  }, [value, pastedImages, addBlock, addParsedProperties, isPinToggled, togglePin, buildImageHtml, onAfterSubmit]);
 
   // 전체 페이지로 확장
   const expandToFullPage = useCallback(() => {
-    if (!value.trim()) {
+    const imageHtml = buildImageHtml();
+
+    if (!value.trim() && pastedImages.length === 0) {
       // 빈 상태에서 확장 → 새 블록 생성 후 열기
       const newBlockId = addBlock(undefined, {
         name: "",
@@ -179,6 +242,7 @@ export function UnifiedInput({
         setIsPinToggled(false);
       }
       setValue("");
+      setPastedImages([]);
       setIsFocused(false);
       if (onOpenFullPage) {
         onOpenFullPage(newBlockId);
@@ -188,7 +252,7 @@ export function UnifiedInput({
       const processed = processUnifiedInput(value.trim());
       const newBlockId = addBlock(undefined, {
         name: processed.name,
-        content: processed.content,
+        content: (processed.content || "") + imageHtml,
       });
 
       addParsedProperties(newBlockId, processed.properties);
@@ -199,20 +263,22 @@ export function UnifiedInput({
       }
 
       setValue("");
+      setPastedImages([]);
       setIsFocused(false);
 
       if (onOpenFullPage) {
         onOpenFullPage(newBlockId);
       }
     }
-  }, [value, addBlock, addParsedProperties, onOpenFullPage, isPinToggled, togglePin]);
+  }, [value, pastedImages, addBlock, addParsedProperties, onOpenFullPage, isPinToggled, togglePin, buildImageHtml]);
 
   // 취소
   const handleCancel = useCallback(() => {
+    clearPastedImages();
     setValue("");
     setIsFocused(false);
     setIsPinToggled(false);
-  }, []);
+  }, [clearPastedImages]);
 
   // 키보드 핸들러 (input — 비포커스 상태에서 클릭 시)
   const handleInputKeyDown = useCallback(
@@ -291,6 +357,7 @@ export function UnifiedInput({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleInputKeyDown}
           onFocus={handleInputFocus}
+          onPaste={handlePaste}
           placeholder={placeholder}
           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
           autoComplete="off"
@@ -310,7 +377,7 @@ export function UnifiedInput({
           />
 
           {/* 확장 카드 — top-0으로 input 위를 덮어씌움 */}
-          <div className="absolute top-0 left-0 right-0 z-30 rounded-lg border border-primary bg-card shadow-lg">
+          <div className="absolute bottom-0 lg:bottom-auto lg:top-0 left-0 right-0 z-30 rounded-lg border border-primary bg-card shadow-lg">
             <div className="flex items-start gap-2 px-3 pt-1.5">
               <button
                 onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
@@ -327,6 +394,7 @@ export function UnifiedInput({
                 value={value}
                 onChange={handleTextareaChange}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={placeholder}
                 className="flex-1 bg-transparent outline-none text-sm leading-relaxed resize-none placeholder:text-muted-foreground min-w-0 overflow-hidden"
                 style={{ maxHeight: "300px", overflowY: value.split("\n").length > 10 ? "auto" : "hidden" }}
@@ -348,6 +416,29 @@ export function UnifiedInput({
                 </svg>
               </button>
             </div>
+
+            {/* 이미지 미리보기 */}
+            {pastedImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-3 pt-2" data-testid="image-preview-area">
+                {pastedImages.map((img) => (
+                  <div key={img.id} className="relative group">
+                    <img
+                      src={img.url}
+                      alt={`image-${img.id}`}
+                      className="w-20 h-20 object-cover rounded border border-border"
+                    />
+                    <button
+                      onClick={() => handleRemoveImage(img.id)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="이미지 삭제"
+                      data-testid={`remove-image-${img.id}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* 퀵 문법 힌트 */}
             {showHints && (
@@ -378,7 +469,7 @@ export function UnifiedInput({
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={!value.trim()}
+                  disabled={!value.trim() && pastedImages.length === 0}
                   className="px-2.5 py-0.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   tabIndex={-1}
                 >

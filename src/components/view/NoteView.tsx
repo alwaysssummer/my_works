@@ -37,6 +37,7 @@ interface NoteViewProps {
   allTags: Tag[];
   blockTypes: BlockType[];
   contextBlocks?: Block[];
+  variant?: "modal" | "inline";
   onUpdateBlock: (id: string, content: string) => void;
   onUpdateBlockName: (id: string, name: string) => void;
   onAddProperty: (blockId: string, propertyType: PropertyType, name?: string) => void;
@@ -74,6 +75,7 @@ export function NoteView({
   allTags,
   blockTypes,
   contextBlocks = [],
+  variant = "modal",
   onUpdateBlock,
   onUpdateBlockName,
   onAddProperty,
@@ -560,27 +562,21 @@ export function NoteView({
   // 모든 속성 유형
   const allPropertyTypes = DEFAULT_PROPERTIES;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* 어두운 오버레이 (클릭 시 닫힘) */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
+  const isInline = variant === "inline";
 
-      {/* 모달 콘텐츠 */}
-      <div className="relative z-10 bg-background rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] mx-4 overflow-hidden flex flex-col">
+  const noteContent = (
+    <>
         {/* 클릭 외부 닫기 핸들러 (속성 추가 메뉴용) */}
         {showAddProperty && (
           <div
-            className="fixed inset-0 z-[99]"
+            className={`${isInline ? "absolute" : "fixed"} inset-0 z-[99]`}
             onClick={() => setShowAddProperty(false)}
           />
         )}
 
         {/* 메인 콘텐츠 - 스크롤 가능 */}
         <main className="flex-1 overflow-auto">
-        <div className="note-view max-w-5xl mx-auto px-8 py-6 min-h-full">
+        <div className={`note-view ${isInline ? "px-4 py-4" : "max-w-5xl mx-auto px-8 py-6"} min-h-full`}>
           {/* 통합 헤더: 제목 | 속성버튼 | + | X */}
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
             {/* 체크박스가 있으면 제목 앞에 체크 아이콘 표시 */}
@@ -1366,12 +1362,16 @@ export function NoteView({
         </main>
 
         {/* 하단 상태 바 */}
-        <footer className="flex items-center justify-between px-6 py-2 border-t border-border text-xs text-muted-foreground">
+        <footer className={`flex items-center justify-between ${isInline ? "px-4" : "px-6"} py-2 border-t border-border text-xs text-muted-foreground`}>
           <div className="flex items-center gap-4">
             <kbd className="px-1 py-0.5 bg-muted rounded">ESC</kbd>
-            <span>닫기</span>
-            <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+↵</kbd>
-            <span>저장·닫기</span>
+            <span>{isInline ? "선택 해제" : "닫기"}</span>
+            {!isInline && (
+              <>
+                <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+↵</kbd>
+                <span>저장·닫기</span>
+              </>
+            )}
             <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl+⌫</kbd>
             <span>삭제</span>
             <span aria-live="polite">자동 저장</span>
@@ -1380,6 +1380,30 @@ export function NoteView({
             {formatRelativeDate(block.updatedAt)} 수정됨
           </time>
         </footer>
+    </>
+  );
+
+  // inline 모드: 모달 래퍼 없이 렌더링
+  if (isInline) {
+    return (
+      <div className="relative flex flex-col h-full w-full overflow-hidden bg-background">
+        {noteContent}
+      </div>
+    );
+  }
+
+  // modal 모드: 기존 모달 래퍼
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* 어두운 오버레이 (클릭 시 닫힘) */}
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+
+      {/* 모달 콘텐츠 */}
+      <div className="relative z-10 bg-background rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] mx-4 overflow-hidden flex flex-col">
+        {noteContent}
       </div>
     </div>
   );
