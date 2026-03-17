@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Block } from "@/types/block";
 import { BlockType } from "@/types/blockType";
 import { Tag } from "@/types/property";
-import { Plus, ChevronLeft, ChevronRight, Search, X, Users, BookOpen, Trash2, DollarSign, Link2 } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Search, X, Users, BookOpen, Trash2, DollarSign, Link2, Check } from "lucide-react";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 import { getMonthlyBillingSummary } from "@/lib/propertyHelpers";
@@ -12,7 +12,7 @@ import { useBlockActions } from "@/contexts/BlockContext";
 import { useTags } from "@/hooks/useTags";
 import { NoteView } from "@/components/view/NoteView";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { createShareLink, getActiveShareLink, deactivateShareLink } from "@/lib/shareLink";
+import { createShareLink, getActiveShareLink } from "@/lib/shareLink";
 
 const GRADE_TABS = [
   { name: "중등", color: "#10b981" },
@@ -92,39 +92,33 @@ export function StudentListView({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // 공유 링크 상태
-  const [showSharePopover, setShowSharePopover] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
 
-  // 공유 팝오버 열 때 기존 링크 조회
+  // 초기 로드 시 기존 토큰 조회 (첫 클릭 속도 개선)
   useEffect(() => {
-    if (showSharePopover && isSupabaseConfigured()) {
+    if (isSupabaseConfigured()) {
       getActiveShareLink().then((link) => {
         if (link) setShareToken(link.token);
       });
     }
-  }, [showSharePopover]);
-
-  const handleCreateShareLink = useCallback(async () => {
-    setShareLoading(true);
-    const result = await createShareLink();
-    if (result) setShareToken(result.token);
-    setShareLoading(false);
   }, []);
 
-  const handleDeactivateShareLink = useCallback(async () => {
-    if (!shareToken) return;
-    const ok = await deactivateShareLink(shareToken);
-    if (ok) setShareToken(null);
-  }, [shareToken]);
-
-  const handleCopyShareLink = useCallback(() => {
-    if (!shareToken) return;
-    const url = `${window.location.origin}/share/${shareToken}`;
-    navigator.clipboard.writeText(url);
-    setShareCopied(true);
-    setTimeout(() => setShareCopied(false), 2000);
+  const handleShareClick = useCallback(async () => {
+    if (!isSupabaseConfigured()) return;
+    setShareLoading(true);
+    const result = shareToken
+      ? { token: shareToken }
+      : await createShareLink();
+    if (result) {
+      setShareToken(result.token);
+      const url = `${window.location.origin}/share/${result.token}`;
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }
+    setShareLoading(false);
   }, [shareToken]);
 
   // 날짜 유틸리티 함수
@@ -542,64 +536,25 @@ export function StudentListView({
               <Plus className="w-4 h-4" />
               <span className={inlineBlock ? "hidden" : ""}>학생 추가</span>
             </button>
-            {/* 공유 버튼 */}
-            <div className="relative">
-              <button
-                onClick={() => setShowSharePopover((prev) => !prev)}
-                className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors shrink-0"
-                title="공유 링크"
-              >
+            {/* 공유 버튼: 클릭 = 즉시 복사 */}
+            <button
+              onClick={handleShareClick}
+              disabled={shareLoading}
+              className={`flex items-center gap-1 px-2 py-1.5 text-sm border rounded-lg transition-colors shrink-0 ${
+                shareCopied
+                  ? "text-green-600 border-green-300 bg-green-50"
+                  : "text-muted-foreground hover:text-foreground border-border hover:bg-accent"
+              } disabled:opacity-50`}
+              title={shareCopied ? "복사됨!" : "공유 링크 복사"}
+            >
+              {shareLoading ? (
+                <Link2 className="w-4 h-4 animate-spin" />
+              ) : shareCopied ? (
+                <Check className="w-4 h-4" />
+              ) : (
                 <Link2 className="w-4 h-4" />
-              </button>
-              {showSharePopover && (
-                <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowSharePopover(false)} />
-                <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-xl shadow-lg z-50 p-3">
-                  {!isSupabaseConfigured() ? (
-                    <p className="text-sm text-muted-foreground">
-                      클라우드 동기화를 켜야 공유할 수 있어요.
-                    </p>
-                  ) : shareToken ? (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">공유 링크가 활성 상태예요</p>
-                      <div className="flex items-center gap-1">
-                        <input
-                          readOnly
-                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/share/${shareToken}`}
-                          className="flex-1 text-xs bg-background border border-border rounded px-2 py-1 truncate"
-                        />
-                        <button
-                          onClick={handleCopyShareLink}
-                          className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors shrink-0"
-                        >
-                          {shareCopied ? "복사됨" : "복사"}
-                        </button>
-                      </div>
-                      <button
-                        onClick={handleDeactivateShareLink}
-                        className="w-full text-xs text-red-500 hover:text-red-600 py-1"
-                      >
-                        링크 비활성화
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">
-                        학생 목록을 읽기 전용으로 공유합니다.
-                      </p>
-                      <button
-                        onClick={handleCreateShareLink}
-                        disabled={shareLoading}
-                        className="w-full px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
-                      >
-                        {shareLoading ? "생성 중..." : "공유 링크 생성"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-                </>
               )}
-            </div>
+            </button>
             {selectedIds.size > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-blue-600 font-medium">
