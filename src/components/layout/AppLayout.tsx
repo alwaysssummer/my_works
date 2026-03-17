@@ -369,7 +369,7 @@ function AppLayoutInner() {
   }, [activeTab, view.type]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-dvh">
       {/* 헤더: 로고 + 입력 + 검색 */}
       <header className="order-last lg:order-none lg:sticky lg:top-0 z-20 bg-background border-t lg:border-t-0 lg:border-b border-border relative pb-[env(safe-area-inset-bottom)] lg:pb-0">
         <div className="flex items-center gap-3 px-4 h-14">

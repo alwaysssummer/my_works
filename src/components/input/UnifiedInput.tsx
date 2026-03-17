@@ -60,6 +60,16 @@ export function UnifiedInput({
 
   const { addBlock, addProperty, togglePin } = useBlockActions();
 
+  // 모바일 감지 (lg breakpoint = 1024px 기준)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   // textarea 자동 높이 조절
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -100,13 +110,13 @@ export function UnifiedInput({
 
   // 자동 포커스
   useEffect(() => {
-    if (autoFocus) {
+    if (autoFocus && !isMobile) {
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [autoFocus]);
+  }, [autoFocus, isMobile]);
 
   // 속성 추가 공통 로직
   const addParsedProperties = useCallback(
@@ -285,14 +295,17 @@ export function UnifiedInput({
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        // input에서 Enter → 포커스 전환 (textarea로)
-        setIsFocused(true);
+        if (isMobile) {
+          handleSubmit();
+        } else {
+          setIsFocused(true);
+        }
       }
       if (e.key === "Escape") {
         handleCancel();
       }
     },
-    [handleCancel]
+    [handleCancel, isMobile, handleSubmit]
   );
 
   // 키보드 핸들러 (textarea)
@@ -330,8 +343,9 @@ export function UnifiedInput({
 
   // 포커스 핸들러 (input 클릭 시 textarea로 전환)
   const handleInputFocus = useCallback(() => {
+    if (isMobile) return; // 모바일: 팝업 없이 인라인 유지
     setIsFocused(true);
-  }, []);
+  }, [isMobile]);
 
   // 통합 렌더링: input 항상 보임 + 포커스 시 제자리 확장 오버레이
   return (
