@@ -149,6 +149,67 @@ export function useBlocks() {
     return processedBlocks;
   }, []);
 
+  // 기존 학생 블록에 enrollment 속성 자동 추가 + 태그 학년 → enrollment.grade 이전
+  function migrateStudentEnrollments(blocks: Block[]): Block[] {
+    // 태그에서 학년 이전을 위해 태그 목록 로드
+    const gradeNames = ["중등", "고1", "고2", "고3"];
+    let savedTags: { id: string; name: string }[] = [];
+    try {
+      const raw = localStorage.getItem("blocknote-tags");
+      if (raw) savedTags = JSON.parse(raw);
+    } catch { /* ignore */ }
+    const gradeTagMap = savedTags.filter(t => gradeNames.includes(t.name));
+
+    return blocks.map((block) => {
+      const hasContact = block.properties.some(p => p.propertyType === "contact");
+      if (!hasContact) return block;
+
+      let properties = [...block.properties];
+      let enrollmentProp = properties.find(p => p.propertyType === "enrollment");
+
+      // enrollment 없으면 추가
+      if (!enrollmentProp) {
+        enrollmentProp = {
+          id: crypto.randomUUID(),
+          propertyType: "enrollment" as PropertyType,
+          name: "수강등록",
+          value: createPropertyValue("enrollment"),
+        };
+        properties = [...properties, enrollmentProp];
+      }
+
+      // 태그에서 학년 → enrollment.grade 이전 (grade 미설정 시만)
+      if (enrollmentProp.value.type === "enrollment" && !enrollmentProp.value.grade && gradeTagMap.length > 0) {
+        const tagProp = properties.find(p => p.propertyType === "tag");
+        if (tagProp?.value?.type === "tag") {
+          const gradeTag = gradeTagMap.find(g => tagProp.value.type === "tag" && tagProp.value.tagIds.includes(g.id));
+          if (gradeTag) {
+            // enrollment에 grade 설정
+            const enrollId = enrollmentProp.id;
+            properties = properties.map(p =>
+              p.id === enrollId
+                ? { ...p, value: { ...p.value, grade: gradeTag.name } }
+                : p
+            );
+            // 태그에서 학년 태그 제거
+            const gradeTagIds = gradeTagMap.map(g => g.id);
+            const newTagIds = tagProp.value.tagIds.filter((id: string) => !gradeTagIds.includes(id));
+            properties = properties.map(p =>
+              p.id === tagProp.id
+                ? { ...p, value: { ...p.value, tagIds: newTagIds } }
+                : p
+            );
+          }
+        }
+      }
+
+      if (properties !== block.properties) {
+        return { ...block, properties };
+      }
+      return block;
+    });
+  }
+
   // 초기 데이터 로드 (한 번만 실행)
   useEffect(() => {
     // 이미 초기화되었으면 스킵
@@ -258,8 +319,9 @@ export function useBlocks() {
         }));
 
         const processedBlocks = processExpiredTop3(loadedBlocks);
-        setBlocks(processedBlocks);
-        setPrevBlocks(processedBlocks);
+        const migratedBlocks = migrateStudentEnrollments(processedBlocks);
+        setBlocks(migratedBlocks);
+        setPrevBlocks(migratedBlocks);
         setIsLoaded(true);
         return;
       }

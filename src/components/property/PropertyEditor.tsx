@@ -354,6 +354,25 @@ export function PropertyEditor({
     );
   }
 
+  // 수강등록 렌더링
+  if (value.type === "enrollment") {
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <span>📋</span>
+        <span>{value.fee ? `${value.fee}만원/월` : "수강등록"}</span>
+        {showRemove && onRemove && (
+          <button
+            onClick={onRemove}
+            className="p-1 text-gray-400 hover:text-red-500"
+            aria-label="삭제"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
   // 알 수 없는 타입
   return (
     <div className="flex items-center gap-2 text-sm text-gray-400">

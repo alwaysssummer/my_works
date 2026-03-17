@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Block } from "@/types/block";
 import { BlockType } from "@/types/blockType";
 import { Tag } from "@/types/property";
-import { Plus, Phone, Mail, ChevronRight, Search, X, Users, BookOpen, UserPlus, Trophy, Trash2 } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Search, X, Users, BookOpen, Trash2, DollarSign, Link2 } from "lucide-react";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
+import { getMonthlyBillingSummary } from "@/lib/propertyHelpers";
 import { useBlockActions } from "@/contexts/BlockContext";
 import { useTags } from "@/hooks/useTags";
 import { NoteView } from "@/components/view/NoteView";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { createShareLink, getActiveShareLink, deactivateShareLink } from "@/lib/shareLink";
 
 const GRADE_TABS = [
   { name: "중등", color: "#10b981" },
@@ -17,6 +20,13 @@ const GRADE_TABS = [
   { name: "고2", color: "#8b5cf6" },
   { name: "고3", color: "#ef4444" },
 ] as const;
+
+// 학생의 학년 가져오기 (enrollment.grade)
+function getStudentGrade(block: Block): string | undefined {
+  const enrollProp = block.properties.find(p => p.propertyType === "enrollment");
+  if (enrollProp?.value?.type === "enrollment") return enrollProp.value.grade;
+  return undefined;
+}
 
 interface StudentListViewProps {
   blocks: Block[];
@@ -51,17 +61,6 @@ export function StudentListView({
     return div.textContent || div.innerText || "";
   };
 
-  // 학생의 태그 가져오기
-  const getStudentTags = (block: Block) => {
-    const tagProp = block.properties.find((p) => p.propertyType === "tag");
-    if (tagProp?.value?.type === "tag") {
-      return tagProp.value.tagIds
-        .map((id) => tags.find((t) => t.id === id))
-        .filter(Boolean) as Tag[];
-    }
-    return [];
-  };
-
   // 학생의 연락처 가져오기
   const getContact = (block: Block) => {
     const contactProp = block.properties.find((p) => p.propertyType === "contact");
@@ -83,11 +82,50 @@ export function StudentListView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
 
+  // 정렬 모드: 날짜별 보기
+  const [sortByDate, setSortByDate] = useState(false);
+
   // 다중 선택 상태
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // 삭제 확인 상태
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // 공유 링크 상태
+  const [showSharePopover, setShowSharePopover] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  // 공유 팝오버 열 때 기존 링크 조회
+  useEffect(() => {
+    if (showSharePopover && isSupabaseConfigured()) {
+      getActiveShareLink().then((link) => {
+        if (link) setShareToken(link.token);
+      });
+    }
+  }, [showSharePopover]);
+
+  const handleCreateShareLink = useCallback(async () => {
+    setShareLoading(true);
+    const result = await createShareLink();
+    if (result) setShareToken(result.token);
+    setShareLoading(false);
+  }, []);
+
+  const handleDeactivateShareLink = useCallback(async () => {
+    if (!shareToken) return;
+    const ok = await deactivateShareLink(shareToken);
+    if (ok) setShareToken(null);
+  }, [shareToken]);
+
+  const handleCopyShareLink = useCallback(() => {
+    if (!shareToken) return;
+    const url = `${window.location.origin}/share/${shareToken}`;
+    navigator.clipboard.writeText(url);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  }, [shareToken]);
 
   // 날짜 유틸리티 함수
   const getWeekStart = (date: Date) => {
@@ -162,18 +200,33 @@ export function StudentListView({
     }).length;
   }, [blocks]);
 
-  // 3) 연락처 등록 비율
-  const contactStats = useMemo(() => {
-    const withContact = studentBlocks.filter((b) => {
-      const contact = b.properties.find((p) => p.propertyType === "contact");
-      return contact?.value?.type === "contact" && (contact.value.phone || contact.value.email);
-    }).length;
-    return { count: withContact, total: studentBlocks.length };
-  }, [studentBlocks]);
+  // 3) 수강료 현황
+  const [billingMonth, setBillingMonth] = useState(() => getKoreanToday().slice(0, 7));
 
-  // 4) 학년별 분포
+  const billingSummary = useMemo(() => {
+    return getMonthlyBillingSummary(studentBlocks, billingMonth);
+  }, [studentBlocks, billingMonth]);
+
+  const handlePrevMonth = useCallback(() => {
+    setBillingMonth((prev) => {
+      const [y, m] = prev.split("-").map(Number);
+      const nm = m === 1 ? 12 : m - 1;
+      const ny = m === 1 ? y - 1 : y;
+      return `${ny}-${String(nm).padStart(2, "0")}`;
+    });
+  }, []);
+
+  const handleNextMonth = useCallback(() => {
+    setBillingMonth((prev) => {
+      const [y, m] = prev.split("-").map(Number);
+      const nm = m === 12 ? 1 : m + 1;
+      const ny = m === 12 ? y + 1 : y;
+      return `${ny}-${String(nm).padStart(2, "0")}`;
+    });
+  }, []);
+
+  // 4) 학년별 분포 (enrollment.grade 기반)
   const tagDistribution = useMemo(() => {
-    const gradeNames = new Set<string>(GRADE_TABS.map((g) => g.name));
     const dist: Record<string, { count: number; color: string }> = {};
     // 학년별 초기화
     GRADE_TABS.forEach((g) => {
@@ -182,18 +235,10 @@ export function StudentListView({
     dist["미지정"] = { count: 0, color: "#9CA3AF" };
 
     studentBlocks.forEach((b) => {
-      const tagProp = b.properties.find((p) => p.propertyType === "tag");
-      let hasGradeTag = false;
-      if (tagProp?.value?.type === "tag" && tagProp.value.tagIds.length > 0) {
-        tagProp.value.tagIds.forEach((id) => {
-          const tag = tags.find((t) => t.id === id);
-          if (tag && gradeNames.has(tag.name)) {
-            dist[tag.name].count += 1;
-            hasGradeTag = true;
-          }
-        });
-      }
-      if (!hasGradeTag) {
+      const grade = getStudentGrade(b);
+      if (grade && dist[grade]) {
+        dist[grade].count += 1;
+      } else {
         dist["미지정"].count += 1;
       }
     });
@@ -201,20 +246,7 @@ export function StudentListView({
     return Object.entries(dist)
       .map(([name, data]) => ({ name, ...data }))
       .filter((d) => d.count > 0);
-  }, [studentBlocks, tags]);
-
-  // 5) 수업 TOP 3
-  const topStudents = useMemo(() => {
-    return studentBlocks
-      .map((s) => ({ student: s, count: getLessonCount(s.id) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
-  }, [studentBlocks, blocks]);
-
-  // 학년 태그 매핑
-  const gradeTags = useMemo(() => {
-    return GRADE_TABS.map((g) => tags.find((t) => t.name === g.name) || null);
-  }, [tags]);
+  }, [studentBlocks]);
 
   // 필터링된 학생 목록
   const filteredStudents = useMemo(() => {
@@ -225,21 +257,25 @@ export function StudentListView({
           if (!displayName.includes(searchQuery.toLowerCase())) return false;
         }
         if (selectedGrade !== null) {
-          const gradeTag = gradeTags[selectedGrade];
-          if (!gradeTag) return false;
-          const tagProp = s.properties.find((p) => p.propertyType === "tag");
-          if (tagProp?.value?.type !== "tag" || !tagProp.value.tagIds.includes(gradeTag.id)) {
-            return false;
-          }
+          const gradeName = GRADE_TABS[selectedGrade].name;
+          if (getStudentGrade(s) !== gradeName) return false;
         }
         return true;
       })
       .sort((a, b) => {
-        // 학년 순서: 중등(0) → 고1(1) → 고2(2) → 고3(3), 미지정은 마지막
+        if (sortByDate) {
+          // 날짜별: dayOfMonth 오름차순 (등록일이 빠른 순), 없으면 마지막
+          const getDayOfMonth = (s: Block) => {
+            const ep = s.properties.find(p => p.propertyType === "enrollment");
+            return ep?.value?.type === "enrollment" ? ep.value.dayOfMonth : 99;
+          };
+          return getDayOfMonth(a) - getDayOfMonth(b);
+        }
+        // 기본: 학년 순서 → 수업 수
         const getGradeIndex = (s: Block) => {
-          const tagProp = s.properties.find((p) => p.propertyType === "tag");
-          if (tagProp?.value?.type !== "tag") return GRADE_TABS.length;
-          const idx = gradeTags.findIndex((gt) => gt && tagProp.value.type === "tag" && tagProp.value.tagIds.includes(gt.id));
+          const grade = getStudentGrade(s);
+          if (!grade) return GRADE_TABS.length;
+          const idx = GRADE_TABS.findIndex(g => g.name === grade);
           return idx === -1 ? GRADE_TABS.length : idx;
         };
         const gradeA = getGradeIndex(a);
@@ -247,14 +283,11 @@ export function StudentListView({
         if (gradeA !== gradeB) return gradeA - gradeB;
         return getLessonCount(b.id) - getLessonCount(a.id);
       });
-  }, [studentBlocks, searchQuery, selectedGrade, gradeTags, getLessonCount]);
+  }, [studentBlocks, searchQuery, selectedGrade, getLessonCount, sortByDate]);
 
   const maxTagCount = Math.max(...tagDistribution.map((t) => t.count), 1);
 
   const weekDiff = weeklyLessons - lastWeekLessons;
-  const contactRate = contactStats.total > 0
-    ? Math.round((contactStats.count / contactStats.total) * 100)
-    : 0;
 
   // 다중 선택 핸들러
   const handleSelectAll = useCallback(() => {
@@ -298,18 +331,68 @@ export function StudentListView({
   const actions = useBlockActions();
   const { tags: allTags, createTag, updateTag, deleteTag } = useTags();
 
-  // 학년 태그 자동 생성
-  const gradeTagsCreated = useRef(false);
-  useEffect(() => {
-    if (gradeTagsCreated.current) return;
-    const missing = GRADE_TABS.filter(
-      (g) => !allTags.some((t) => t.name === g.name)
-    );
-    if (missing.length > 0) {
-      missing.forEach((g) => createTag(g.name, g.color));
+  // 현재 billingMonth 이전에 미결제 월이 있는지 확인
+  // startDate 월 ~ billingMonth 직전까지 순회하여 enrolled !== true인 첫 월 반환
+  const getFirstUnpaidPrevMonth = useCallback((enrollValue: { startDate: string; records: Record<string, { enrolled: boolean }> }, currentBillingMonth: string): string | null => {
+    const startMonth = enrollValue.startDate.slice(0, 7); // "YYYY-MM"
+    if (startMonth >= currentBillingMonth) return null; // startDate가 현재 월 이후면 이전 미결제 없음
+
+    let [y, m] = startMonth.split("-").map(Number);
+    const [endY, endM] = currentBillingMonth.split("-").map(Number);
+
+    while (y < endY || (y === endY && m < endM)) {
+      const monthKey = `${y}-${String(m).padStart(2, "0")}`;
+      if (enrollValue.records[monthKey]?.enrolled !== true) {
+        return monthKey;
+      }
+      m++;
+      if (m > 12) { m = 1; y++; }
     }
-    gradeTagsCreated.current = true;
-  }, [allTags, createTag]);
+    return null;
+  }, []);
+
+  const handleTogglePayment = useCallback((student: Block, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const enrollProp = student.properties.find(p => p.propertyType === "enrollment");
+    if (!enrollProp || enrollProp.value?.type !== "enrollment") return;
+
+    const value = enrollProp.value;
+    const existing = value.records[billingMonth] || { enrolled: false };
+
+    actions.updateProperty(student.id, enrollProp.id, {
+      ...value,
+      records: {
+        ...value.records,
+        [billingMonth]: {
+          ...existing,
+          enrolled: !existing.enrolled,
+          ...(!existing.enrolled ? { actualDate: getKoreanToday() } : {}),
+        },
+      },
+    });
+  }, [billingMonth, actions]);
+
+  // 전미결 클릭: 가장 오래된 미결제 월을 결제 처리
+  const handlePayPrevMonth = useCallback((student: Block, unpaidMonth: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const enrollProp = student.properties.find(p => p.propertyType === "enrollment");
+    if (!enrollProp || enrollProp.value?.type !== "enrollment") return;
+
+    const value = enrollProp.value;
+    const existing = value.records[unpaidMonth] || { enrolled: false };
+
+    actions.updateProperty(student.id, enrollProp.id, {
+      ...value,
+      records: {
+        ...value.records,
+        [unpaidMonth]: {
+          ...existing,
+          enrolled: true,
+          actualDate: getKoreanToday(),
+        },
+      },
+    });
+  }, [actions]);
 
   // 모바일 감지
   const [isMobile, setIsMobile] = useState(false);
@@ -364,31 +447,6 @@ export function StudentListView({
     actions.removeTagFromAllBlocks(tagId);
   }, [deleteTag, actions]);
 
-  // 학년 토글 핸들러 (단일 선택, 재클릭 해제)
-  const handleGradeToggle = useCallback((gradeIdx: number) => {
-    if (!inlineBlock) return;
-    const targetTag = gradeTags[gradeIdx];
-    if (!targetTag) return;
-
-    const tagProp = inlineBlock.properties.find(p => p.propertyType === "tag");
-
-    if (!tagProp) {
-      // tag 속성이 없으면 학년 태그를 포함한 tag 속성 추가
-      actions.addProperty(inlineBlock.id, "tag", undefined, { type: "tag", tagIds: [targetTag.id] });
-      return;
-    }
-
-    const currentTagIds = tagProp.value?.type === "tag" ? tagProp.value.tagIds : [];
-    const gradeTagIds = gradeTags.filter(Boolean).map(t => t!.id);
-    // 기존 학년 태그 모두 제거, 일반 태그 유지
-    let newTagIds = currentTagIds.filter(id => !gradeTagIds.includes(id));
-    // 현재 클릭한 학년이 선택되어 있지 않으면 추가 (토글)
-    if (!currentTagIds.includes(targetTag.id)) {
-      newTagIds = [...newTagIds, targetTag.id];
-    }
-    actions.updateProperty(inlineBlock.id, tagProp.id, { type: "tag", tagIds: newTagIds });
-  }, [inlineBlock, gradeTags, actions]);
-
   // 키보드 탐색 훅
   const { focusedId, listRef } = useListNavigation({
     items: filteredStudents,
@@ -399,25 +457,19 @@ export function StudentListView({
   return (
     <main className="flex-1 h-screen overflow-auto bg-background">
       {/* 모바일 컴팩트 요약 바 */}
-      <div className="lg:hidden px-4 py-2 border-b border-border bg-card flex items-center gap-4 text-sm">
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <Users className="w-3.5 h-3.5" />
-          <span className="font-medium text-foreground">{totalStats.total}</span>명
-        </span>
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <BookOpen className="w-3.5 h-3.5" />
-          <span className="font-medium text-foreground">{weeklyLessons}</span>회
-        </span>
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <Phone className="w-3.5 h-3.5" />
-          <span className="font-medium text-foreground">{contactRate}%</span>
-        </span>
+      <div className="lg:hidden px-4 py-2 border-b border-border bg-card flex items-center justify-center gap-2 text-sm font-semibold">
+        <span className="text-muted-foreground">{billingSummary.totalFee}({billingSummary.activeCount})</span>
+        <span className="text-muted-foreground">/</span>
+        <span className="text-green-600">{billingSummary.paidFee}({billingSummary.paidCount})</span>
+        <span className="text-muted-foreground">/</span>
+        <span className={billingSummary.unpaidFee > 0 ? "text-red-500" : "text-green-600"}>{billingSummary.unpaidFee}({billingSummary.activeCount - billingSummary.paidCount})</span>
+        <span className="text-muted-foreground font-normal text-xs">만원</span>
       </div>
 
       {/* 3단 레이아웃 (데스크톱) / 1단 (모바일) */}
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* 좌: 학생 목록 */}
-        <div className="lg:shrink-0 lg:overflow-auto flex flex-col transition-all lg:w-72">
+        <div className="lg:shrink-0 lg:overflow-auto flex flex-col transition-all lg:w-96">
           {/* 학년 탭 필터 */}
           <div className="border-b border-border">
             <div className="flex">
@@ -436,13 +488,7 @@ export function StudentListView({
                 )}
               </button>
               {GRADE_TABS.map((grade, idx) => {
-                const gradeTag = gradeTags[idx];
-                const count = gradeTag
-                  ? studentBlocks.filter((b) => {
-                      const tagProp = b.properties.find((p) => p.propertyType === "tag");
-                      return tagProp?.value?.type === "tag" && tagProp.value.tagIds.includes(gradeTag.id);
-                    }).length
-                  : 0;
+                const count = studentBlocks.filter((b) => getStudentGrade(b) === grade.name).length;
                 return (
                   <button
                     key={grade.name}
@@ -496,6 +542,64 @@ export function StudentListView({
               <Plus className="w-4 h-4" />
               <span className={inlineBlock ? "hidden" : ""}>학생 추가</span>
             </button>
+            {/* 공유 버튼 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSharePopover((prev) => !prev)}
+                className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors shrink-0"
+                title="공유 링크"
+              >
+                <Link2 className="w-4 h-4" />
+              </button>
+              {showSharePopover && (
+                <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowSharePopover(false)} />
+                <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-xl shadow-lg z-50 p-3">
+                  {!isSupabaseConfigured() ? (
+                    <p className="text-sm text-muted-foreground">
+                      클라우드 동기화를 켜야 공유할 수 있어요.
+                    </p>
+                  ) : shareToken ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">공유 링크가 활성 상태예요</p>
+                      <div className="flex items-center gap-1">
+                        <input
+                          readOnly
+                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/share/${shareToken}`}
+                          className="flex-1 text-xs bg-background border border-border rounded px-2 py-1 truncate"
+                        />
+                        <button
+                          onClick={handleCopyShareLink}
+                          className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors shrink-0"
+                        >
+                          {shareCopied ? "복사됨" : "복사"}
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleDeactivateShareLink}
+                        className="w-full text-xs text-red-500 hover:text-red-600 py-1"
+                      >
+                        링크 비활성화
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        학생 목록을 읽기 전용으로 공유합니다.
+                      </p>
+                      <button
+                        onClick={handleCreateShareLink}
+                        disabled={shareLoading}
+                        className="w-full px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                      >
+                        {shareLoading ? "생성 중..." : "공유 링크 생성"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                </>
+              )}
+            </div>
             {selectedIds.size > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-blue-600 font-medium">
@@ -531,8 +635,21 @@ export function StudentListView({
               {isAllSelected && <span className="text-blue-600 text-sm">✓</span>}
               {isSomeSelected && <span className="text-blue-600 text-xs">−</span>}
             </button>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground flex-1">
               전체 {filteredStudents.length}명
+            </span>
+            <button
+              onClick={() => setSortByDate(prev => !prev)}
+              className={`px-2 py-0.5 text-xs rounded-full transition-colors ${
+                sortByDate
+                  ? "bg-blue-100 text-blue-600 font-medium"
+                  : "text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              날짜별
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {parseInt(billingMonth.split("-")[1], 10)}월 결제
             </span>
           </div>
 
@@ -541,10 +658,14 @@ export function StudentListView({
             {filteredStudents.length > 0 ? (
               <>
                 {filteredStudents.map((student) => {
-                  const studentTags = getStudentTags(student);
                   const contact = getContact(student);
                   const lessonCount = getLessonCount(student.id);
                   const isFocused = student.id === focusedId;
+
+                  const enrollProp = student.properties.find(p => p.propertyType === "enrollment");
+                  const enrollValue = enrollProp?.value?.type === "enrollment" ? enrollProp.value : null;
+                  const isPaid = enrollValue ? enrollValue.records[billingMonth]?.enrolled === true : false;
+                  const firstUnpaidPrev = enrollValue ? getFirstUnpaidPrevMonth(enrollValue, billingMonth) : null;
 
                   return (
                     <div
@@ -576,34 +697,55 @@ export function StudentListView({
                         )}
                       </button>
 
-                      {/* 이름 */}
-                      <span className="font-medium flex-1 truncate">
+                      {/* 1줄 콘텐츠 영역 */}
+                      <span className="font-medium truncate shrink-0">
                         {student.name || getPlainText(student.content) || "이름 없음"}
                       </span>
-
-                      {/* 학년 태그 */}
+                      {/* 학년 배지 */}
                       {(() => {
-                        const gradeNames = new Set<string>(GRADE_TABS.map((g) => g.name));
-                        const gradeTag = studentTags.find((t) => gradeNames.has(t.name));
-                        return gradeTag ? (
+                        const grade = getStudentGrade(student);
+                        const gradeTab = grade ? GRADE_TABS.find(g => g.name === grade) : null;
+                        return gradeTab ? (
                           <span
                             className="px-2 py-0.5 text-xs rounded-full shrink-0"
                             style={{
-                              backgroundColor: `${gradeTag.color}20`,
-                              color: gradeTag.color,
+                              backgroundColor: `${gradeTab.color}20`,
+                              color: gradeTab.color,
                             }}
                           >
-                            {gradeTag.name}
+                            {gradeTab.name}
                           </span>
                         ) : null;
                       })()}
-
-                      {/* 수업 횟수 */}
                       <span className="text-xs text-muted-foreground shrink-0">
                         {lessonCount}회
                       </span>
-
-                      <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      {enrollValue && (
+                        <>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {enrollValue.fee}만원·{enrollValue.dayOfMonth}일
+                          </span>
+                          {firstUnpaidPrev && (
+                            <button
+                              onClick={(e) => handlePayPrevMonth(student, firstUnpaidPrev, e)}
+                              className="ml-auto px-2 py-0.5 text-xs rounded-full font-medium transition-colors shrink-0 bg-orange-100 text-orange-600 hover:bg-orange-200"
+                              title={`${parseInt(firstUnpaidPrev.split("-")[1], 10)}월 미결제`}
+                            >
+                              전미결
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => handleTogglePayment(student, e)}
+                            className={`${firstUnpaidPrev ? "" : "ml-auto "}px-2 py-0.5 text-xs rounded-full font-medium transition-colors shrink-0 ${
+                              isPaid
+                                ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                : "bg-red-50 text-red-500 hover:bg-red-100"
+                            }`}
+                          >
+                            {isPaid ? "✓ 결제" : "미결제"}
+                          </button>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -631,30 +773,6 @@ export function StudentListView({
         <div className="hidden lg:flex flex-col flex-1 border-l border-border overflow-hidden">
           {inlineBlock ? (
             <>
-              {/* 학년 선택 바 */}
-              <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-                <span className="text-sm text-muted-foreground mr-1">학년</span>
-                {GRADE_TABS.map((grade, idx) => {
-                  const gradeTag = gradeTags[idx];
-                  const isSelected = gradeTag &&
-                    getStudentTags(inlineBlock).some(t => t.id === gradeTag.id);
-                  return (
-                    <button
-                      key={grade.name}
-                      onClick={() => handleGradeToggle(idx)}
-                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                        isSelected ? "text-white" : "hover:opacity-80"
-                      }`}
-                      style={{
-                        backgroundColor: isSelected ? grade.color : `${grade.color}20`,
-                        color: isSelected ? "white" : grade.color,
-                      }}
-                    >
-                      {grade.name}
-                    </button>
-                  );
-                })}
-              </div>
               <NoteView
               key={inlineStudentId}
               variant="inline"
@@ -687,9 +805,9 @@ export function StudentListView({
         </div>
 
         {/* 우: 통계 사이드바 */}
-        <aside className="hidden lg:block w-80 border-l border-border lg:overflow-auto shrink-0">
+        <aside className="hidden lg:block w-[22rem] border-l border-border lg:overflow-auto shrink-0">
           <div className="sticky top-0 p-4 space-y-4">
-            {/* 요약 통계 카드 2x2 */}
+            {/* 요약 통계 카드 1x2 */}
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-xl border border-border bg-card">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
@@ -711,73 +829,79 @@ export function StudentListView({
                   {weekDiff >= 0 ? "+" : ""}{weekDiff} 지난주 대비
                 </div>
               </div>
-              <div className="p-3 rounded-xl border border-border bg-card">
-                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                  <Phone className="w-3.5 h-3.5" />
-                  <span className="text-xs">연락처 등록</span>
-                </div>
-                <div className="text-xl font-bold">{contactRate}%</div>
-                <div className="text-xs text-muted-foreground">
-                  {contactStats.count}/{contactStats.total}명
-                </div>
-              </div>
-              <div className="p-3 rounded-xl border border-border bg-card">
-                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span className="text-xs">신규 학생</span>
-                </div>
-                <div className="text-xl font-bold">{totalStats.newThisMonth}명</div>
-                <div className="text-xs text-muted-foreground">이번달</div>
-              </div>
             </div>
 
-            {/* 수업 TOP 3 */}
+            {/* 수강료 현황 */}
             <div className="p-3 rounded-xl border border-border bg-card">
-              <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-yellow-500" />
-                수업 TOP 3
-              </h3>
-              {topStudents.length > 0 ? (
-                <div className="space-y-2">
-                  {topStudents.map((item, i) => {
-                    const studentTags = getStudentTags(item.student);
-                    const name = item.student.name || getPlainText(item.student.content) || "이름 없음";
-                    const tagText = studentTags.length > 0 ? studentTags[0].name : "";
-
-                    return (
-                      <div
-                        key={item.student.id}
-                        onClick={() => handleStudentClick(item.student.id)}
-                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                      >
-                        <span className={`text-sm font-bold ${
-                          i === 0 ? "text-yellow-500" :
-                          i === 1 ? "text-gray-400" :
-                          "text-amber-700"
-                        }`}>
-                          {i + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-medium truncate block">{name}</span>
-                          {tagText && (
-                            <span className="text-xs text-muted-foreground">({tagText})</span>
-                          )}
-                        </div>
-                        <span className="text-xs font-medium text-blue-600">
-                          {item.count}회
-                        </span>
-                      </div>
-                    );
-                  })}
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium text-sm flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-yellow-500" />
+                  수강료
+                </h3>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handlePrevMonth}
+                    className="p-0.5 rounded hover:bg-accent transition-colors"
+                    aria-label="이전 월"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                  <span className="text-sm font-medium min-w-[4rem] text-center">
+                    {parseInt(billingMonth.split("-")[1], 10)}월
+                  </span>
+                  <button
+                    onClick={handleNextMonth}
+                    className="p-0.5 rounded hover:bg-accent transition-colors"
+                    aria-label="다음 월"
+                  >
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </button>
                 </div>
+              </div>
+
+              {billingSummary.activeCount > 0 ? (
+                <>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">총 수강료</span>
+                      <span className="font-medium">{billingSummary.totalFee}만원</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">결제</span>
+                      <span className="font-medium text-green-600">{billingSummary.paidFee}만원</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">미결제</span>
+                      <span className={`font-medium ${billingSummary.unpaidFee > 0 ? "text-red-500" : "text-green-600"}`}>
+                        {billingSummary.unpaidFee > 0 ? `${billingSummary.unpaidFee}만원` : "완납"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 진행률 바 */}
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <span>결제 현황</span>
+                      <span>{billingSummary.paidCount}/{billingSummary.activeCount}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all bg-green-500"
+                        style={{
+                          width: `${(billingSummary.paidCount / billingSummary.activeCount) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-3">
-                  수업 기록이 없어요
+                  수강료 데이터가 없어요
                 </p>
               )}
             </div>
 
-            {/* 태그별 분포 */}
+            {/* 학년별 분포 */}
             <div className="p-3 rounded-xl border border-border bg-card">
               <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
                 <span>▦</span> 학년별 분포

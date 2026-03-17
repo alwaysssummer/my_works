@@ -180,6 +180,23 @@ export interface Database {
           created_at?: string;
         };
       };
+      shared_links: {
+        Row: {
+          id: string;
+          token: string;
+          share_type: string;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          token?: string;
+          share_type?: string;
+          is_active?: boolean;
+        };
+        Update: {
+          is_active?: boolean;
+        };
+      };
     };
   };
 }

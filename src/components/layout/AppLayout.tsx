@@ -237,8 +237,7 @@ function AppLayoutInner() {
   const handleAddStudent = useCallback(() => {
     const newBlockId = addBlock();
     addProperty(newBlockId, "contact");
-    addProperty(newBlockId, "tag");      // 학년
-    addProperty(newBlockId, "date");     // 날짜
+    addProperty(newBlockId, "enrollment");  // 수강등록 (수업료 + 월별 기록 + 학년)
     setNoteViewBlockId(newBlockId);
   }, [addBlock, addProperty]);
 
@@ -381,7 +380,7 @@ function AppLayoutInner() {
     <div className="flex flex-col h-dvh">
       {/* 헤더: 로고 + 입력 + 검색 */}
       <header className="order-last lg:order-none lg:sticky lg:top-0 z-20 bg-background border-t lg:border-t-0 lg:border-b border-border relative pb-[env(safe-area-inset-bottom)] lg:pb-0">
-        <div className="flex items-center gap-3 px-4 h-14">
+        <div className="flex items-center gap-3 px-4 min-h-14">
           {/* 로고 — 모바일에서 숨김 */}
           <button
             onClick={() => handleChangeTab("schedule")}

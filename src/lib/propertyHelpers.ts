@@ -252,6 +252,40 @@ export function getEnrollmentSummary(value: Extract<PropertyValue, { type: "enro
 }
 
 /**
+ * 월별 수강료 요약 (학생 블록 배열 + "YYYY-MM" → 총/결제/미결제)
+ */
+export function getMonthlyBillingSummary(
+  studentBlocks: Block[],
+  yearMonth: string
+): { totalFee: number; paidFee: number; unpaidFee: number; activeCount: number; paidCount: number } {
+  let totalFee = 0;
+  let paidFee = 0;
+  let activeCount = 0;
+  let paidCount = 0;
+
+  for (const block of studentBlocks) {
+    const enrollment = getEnrollmentData(block);
+    if (!enrollment) continue;
+    if (enrollment.fee <= 0) continue;
+    // startDate 월이 조회 월보다 이후면 제외
+    if (enrollment.startDate.slice(0, 7) > yearMonth) continue;
+
+    const record = enrollment.records[yearMonth];
+    const monthFee = record?.fee ?? enrollment.fee;
+
+    activeCount++;
+    totalFee += monthFee;
+
+    if (record?.enrolled) {
+      paidCount++;
+      paidFee += monthFee;
+    }
+  }
+
+  return { totalFee, paidFee, unpaidFee: totalFee - paidFee, activeCount, paidCount };
+}
+
+/**
  * 블록이 특정 날짜에 표시되어야 하는지 판단 (반복 일정 포함)
  * WeeklySchedule.tsx의 반복 로직과 동일한 기준 적용
  */

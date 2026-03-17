@@ -22,7 +22,14 @@ export function EnrollmentEditor({
   const value = enrollmentProp.value;
   if (value.type !== "enrollment") return null;
 
-  const { fee, startDate, dayOfMonth, records } = value;
+  const { fee, startDate, dayOfMonth, records, grade } = value;
+
+  const GRADE_OPTIONS = [
+    { name: "중등", color: "#10b981" },
+    { name: "고1", color: "#3b82f6" },
+    { name: "고2", color: "#8b5cf6" },
+    { name: "고3", color: "#ef4444" },
+  ] as const;
 
   const months = useMemo(() => generateMonthRange(startDate), [startDate]);
   const summary = useMemo(() => getEnrollmentSummary(value), [value]);
@@ -74,6 +81,24 @@ export function EnrollmentEditor({
         >
           ✕
         </button>
+      </div>
+
+      {/* 학년 선택 */}
+      <div className="ml-7 mb-3 flex items-center gap-2">
+        <span className="text-xs text-muted-foreground mr-1">학년</span>
+        {GRADE_OPTIONS.map((g) => (
+          <button
+            key={g.name}
+            onClick={() => updateField({ grade: grade === g.name ? undefined : g.name })}
+            className="px-3 py-1 text-xs rounded-full transition-colors"
+            style={{
+              backgroundColor: grade === g.name ? g.color : `${g.color}20`,
+              color: grade === g.name ? "white" : g.color,
+            }}
+          >
+            {g.name}
+          </button>
+        ))}
       </div>
 
       {/* 설정 */}

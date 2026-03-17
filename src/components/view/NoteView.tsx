@@ -180,7 +180,11 @@ export function NoteView({
   const enrollmentProp = getPropertyByType(block, "enrollment");
 
   // 속성 개수 (체크박스는 제목 앞에 표시하므로 제외)
-  const propertyCount = block.properties.filter(p => p.propertyType !== "checkbox").length;
+  const propertyCount = block.properties.filter(p => {
+    if (p.propertyType === "checkbox") return false;
+    if (isStudentBlock && (p.propertyType === "tag" || p.propertyType === "contact")) return false;
+    return true;
+  }).length;
 
   // 백링크 (이 블록을 참조하는 블록들)
   const backlinks = useMemo(() => {
@@ -696,7 +700,9 @@ export function NoteView({
               </button>
               {showAddProperty && (
                 <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg py-1 z-[100] min-w-[160px]">
-                  {allPropertyTypes.map((prop) => (
+                  {allPropertyTypes
+                    .filter((prop) => !(isStudentBlock && prop.type === "tag"))
+                    .map((prop) => (
                     <button
                       key={prop.id}
                       onClick={() => handleAddProperty(prop.type)}
@@ -867,8 +873,8 @@ export function NoteView({
                     </div>
                   )}
 
-                  {/* 태그 */}
-                  {tagProp && (
+                  {/* 태그 (학생 블록에서는 숨김) */}
+                  {tagProp && !isStudentBlock && (
                     <div className="px-4 py-3 group">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">
@@ -1038,8 +1044,8 @@ export function NoteView({
                     </div>
                   )}
 
-                  {/* 연락처 */}
-                  {contactProp && (
+                  {/* 연락처 (학생 블록에서는 숨김) */}
+                  {contactProp && !isStudentBlock && (
                     <div className="px-4 py-3 group">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">

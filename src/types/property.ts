@@ -76,7 +76,7 @@ export type PropertyValue =
   | { type: "memo"; text: string }
   | { type: "urgent"; addedAt: string; slotIndex: number } // TOP 3 추가된 날짜, 슬롯 위치 (0, 1, 2)
   | { type: "duration"; minutes: number } // 수업 시간 (분)
-  | { type: "enrollment"; fee: number; startDate: string; dayOfMonth: number; records: Record<string, EnrollmentRecord> }; // 수강등록
+  | { type: "enrollment"; fee: number; startDate: string; dayOfMonth: number; records: Record<string, EnrollmentRecord>; grade?: string }; // 수강등록
 
 // 기본 제공 속성
 export const DEFAULT_PROPERTIES: PropertyDefinition[] = [

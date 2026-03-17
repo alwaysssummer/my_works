@@ -347,90 +347,93 @@ export function UnifiedInput({
     setIsFocused(true);
   }, [isMobile]);
 
-  // 통합 렌더링: input 항상 보임 + 포커스 시 제자리 확장 오버레이
+  // 외부 클릭 감지 — backdrop 대신 사용
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isFocused) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        handleCancel();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isFocused, handleCancel]);
+
+  // 통합 렌더링: 단일 컨테이너에서 인라인 확장
   return (
-    <div className="relative">
-      {/* 항상 존재 — 헤더 높이 유지용 (포커스 시 카드에 가려짐) */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+    <div ref={containerRef} className="relative">
+      {/* 메인 입력 컨테이너 — 포커스 시 인라인 확장 */}
+      <div className={`rounded-lg border transition-all ${
         isFocused
-          ? "border-transparent bg-accent/30"
+          ? "border-primary bg-card shadow-sm"
           : "border-border bg-accent/30 hover:bg-accent/50"
       }`}>
-        <button
-          onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
-          className={isPinToggled ? "text-sm" : "text-sm grayscale opacity-40 hover:opacity-70"}
-          title="고정하여 저장"
-          tabIndex={-1}
-        >
-          📌
-        </button>
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          onFocus={handleInputFocus}
-          onPaste={handlePaste}
-          placeholder={placeholder}
-          className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-        />
-      </div>
+        <div className="flex items-center gap-2 px-3 py-1.5">
+          <button
+            onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
+            className={isPinToggled
+              ? "text-sm hover:opacity-70"
+              : "text-sm grayscale opacity-40 hover:opacity-70"}
+            title={isPinToggled ? "고정 해제" : "고정하여 저장"}
+            tabIndex={-1}
+          >
+            📌
+          </button>
 
-      {/* 포커스 시 제자리 확장 오버레이 — input 위치부터 시작 */}
-      {isFocused && (
-        <>
-          {/* backdrop — 클릭하면 접기 */}
-          <div
-            className="fixed inset-0 z-20"
-            onClick={handleCancel}
-          />
+          {isFocused ? (
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={placeholder}
+              className="flex-1 bg-transparent outline-none text-sm leading-relaxed resize-none placeholder:text-muted-foreground min-w-0 overflow-hidden"
+              style={{ maxHeight: "300px", overflowY: value.split("\n").length > 10 ? "auto" : "hidden" }}
+              rows={1}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+          ) : (
+            <input
+              ref={inputRef}
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              onFocus={handleInputFocus}
+              onPaste={handlePaste}
+              placeholder={placeholder}
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+          )}
 
-          {/* 확장 카드 — top-0으로 input 위를 덮어씌움 */}
-          <div className="absolute bottom-0 lg:bottom-auto lg:top-0 left-0 right-0 z-30 rounded-lg border border-primary bg-card shadow-lg">
-            <div className="flex items-start gap-2 px-3 pt-1.5">
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
-                className={isPinToggled
-                  ? "text-sm mt-0.5 hover:opacity-70"
-                  : "text-sm mt-0.5 grayscale opacity-40 hover:opacity-70"}
-                title={isPinToggled ? "고정 해제" : "고정하여 저장"}
-                tabIndex={-1}
-              >
-                📌
-              </button>
-              <textarea
-                ref={textareaRef}
-                value={value}
-                onChange={handleTextareaChange}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder={placeholder}
-                className="flex-1 bg-transparent outline-none text-sm leading-relaxed resize-none placeholder:text-muted-foreground min-w-0 overflow-hidden"
-                style={{ maxHeight: "300px", overflowY: value.split("\n").length > 10 ? "auto" : "hidden" }}
-                rows={1}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-              />
-              <button
-                className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded flex-shrink-0"
-                onClick={expandToFullPage}
-                title="전체 페이지로 열기 (Shift+Enter)"
-                tabIndex={-1}
-                data-input-toolbar
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M7 17L17 7M17 7H7M17 7V17" />
-                </svg>
-              </button>
-            </div>
+          {/* 전체페이지 버튼 — 포커스 시만 */}
+          {isFocused && (
+            <button
+              className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded flex-shrink-0"
+              onClick={expandToFullPage}
+              title="전체 페이지로 열기 (Shift+Enter)"
+              tabIndex={-1}
+              data-input-toolbar
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M7 17L17 7M17 7H7M17 7V17" />
+              </svg>
+            </button>
+          )}
+        </div>
 
+        {/* 포커스 시 추가 UI — 인라인으로 아래에 펼쳐짐 */}
+        {isFocused && (
+          <>
             {/* 이미지 미리보기 */}
             {pastedImages.length > 0 && (
               <div className="flex flex-wrap gap-2 px-3 pt-2" data-testid="image-preview-area">
@@ -491,9 +494,9 @@ export function UnifiedInput({
                 </button>
               </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

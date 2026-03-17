@@ -5,7 +5,6 @@ import { Block, BlockProperty, getBlockDisplayName } from "@/types/block";
 import { PropertyType, Tag } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { getBlockTitle } from "@/lib/blockParser";
 import { getKoreanNow, getKoreanToday, toKoreanDateString, getKoreanTime, getKoreanDay } from "@/lib/dateFormat";
 import { shouldBlockAppearOnDate } from "@/lib/propertyHelpers";
 
@@ -31,12 +30,22 @@ interface ScheduleEvent {
   studentName?: string;
 }
 
+const GRADE_ORDER = ["중등", "고1", "고2", "고3"];
+
+function getStudentGrade(block: Block): string | undefined {
+  const enrollProp = block.properties.find(p => p.propertyType === "enrollment");
+  if (enrollProp?.value?.type === "enrollment") return enrollProp.value.grade;
+  return undefined;
+}
+
 // 학년별 색상 (중등부/고등부 구분)
 const GRADE_COLORS = {
   중등부: { bg: "#f3f4f6", border: "#9ca3af", text: "#374151" },  // 연한 회색
   고등부: { bg: "#d1d5db", border: "#6b7280", text: "#111827" },  // 진한 회색
   미지정: { bg: "#e5e7eb", border: "#9ca3af", text: "#4b5563" },  // 기본 회색
   특별일정: { bg: "#fef3c7", border: "#eab308", text: "#854d0e" }, // 노란색
+  일정: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },  // 파란색
+  종일: { bg: "#fee2e2", border: "#ef4444", text: "#991b1b" },  // 연한 빨간색
 };
 
 export function WeeklySchedule({
@@ -74,35 +83,41 @@ export function WeeklySchedule({
     editingEvent?: ScheduleEvent;  // 수정 모드일 때 기존 일정
   } | null>(null);
 
-  // 학생 블록 목록 (contact 속성이 있는 블록을 학생으로 간주)
+  // 학생 블록 목록 (contact 속성이 있는 블록을 학생으로 간주, 학년순 정렬)
   const studentBlocks = useMemo(() => {
-    return blocks.filter((b) =>
-      b.properties.some((p) => p.propertyType === "contact")
-    );
+    return blocks
+      .filter((b) => b.properties.some((p) => p.propertyType === "contact"))
+      .sort((a, b) => {
+        const getGradeIndex = (s: Block) => {
+          const grade = getStudentGrade(s);
+          if (!grade) return GRADE_ORDER.length;
+          const idx = GRADE_ORDER.indexOf(grade);
+          return idx === -1 ? GRADE_ORDER.length : idx;
+        };
+        const gradeA = getGradeIndex(a);
+        const gradeB = getGradeIndex(b);
+        if (gradeA !== gradeB) return gradeA - gradeB;
+        return (a.name || "").localeCompare(b.name || "", "ko");
+      });
   }, [blocks]);
 
-  // 학생의 학년(태그) 기반 색상 가져오기
+  // 학생의 학년(enrollment.grade) 기반 색상 가져오기
   const getStudentGradeColor = useCallback((studentId: string | null) => {
     if (!studentId) return GRADE_COLORS.특별일정;
 
     const studentBlock = blocks.find(b => b.id === studentId);
     if (!studentBlock) return GRADE_COLORS.미지정;
 
-    // 학생의 태그에서 중등부/고등부 확인
-    const tagProp = studentBlock.properties.find(p => p.propertyType === "tag");
-    if (tagProp?.value.type === "tag" && tagProp.value.tagIds) {
-      const tagIds = tagProp.value.tagIds;
-      // tagIds를 태그 이름으로 변환
-      const tagNames = tagIds
-        .map(id => tags.find(t => t.id === id)?.name)
-        .filter(Boolean);
-
-      if (tagNames.includes("중등부")) return GRADE_COLORS.중등부;
-      if (tagNames.includes("고등부")) return GRADE_COLORS.고등부;
+    // enrollment.grade에서 학년 확인
+    const enrollProp = studentBlock.properties.find(p => p.propertyType === "enrollment");
+    if (enrollProp?.value?.type === "enrollment" && enrollProp.value.grade) {
+      const grade = enrollProp.value.grade;
+      if (grade === "중등") return GRADE_COLORS.중등부;
+      if (grade.startsWith("고")) return GRADE_COLORS.고등부;
     }
 
     return GRADE_COLORS.미지정;
-  }, [blocks, tags]);
+  }, [blocks]);
 
   // 모바일 감지
   const [isMobile, setIsMobile] = useState(false);
@@ -206,6 +221,25 @@ export function WeeklySchedule({
     },
     [blocks, settings.defaultDuration]
   );
+
+  // 특정 날짜의 하루 종일 이벤트 가져오기 (time 없는 date 속성)
+  const getAllDayEventsForDate = useCallback(
+    (date: Date) => {
+      const dateStr = toKoreanDateString(date);
+      return blocks.filter((block) => {
+        const dateProp = block.properties.find((p) => p.propertyType === "date");
+        if (!dateProp || dateProp.value.type !== "date") return false;
+        if (dateProp.value.time) return false; // 시간 있으면 시간 그리드에 표시
+        return shouldBlockAppearOnDate(block, dateStr);
+      });
+    },
+    [blocks]
+  );
+
+  // 하루 종일 이벤트가 있는지 여부 (행 표시 조건)
+  const hasAnyAllDayEvents = useMemo(() => {
+    return visibleDays.some((date) => getAllDayEventsForDate(date).length > 0);
+  }, [visibleDays, getAllDayEventsForDate]);
 
   // Google Calendar 스타일 열 배치 알고리즘
   const calculateEventLayout = useCallback((events: ScheduleEvent[]) => {
@@ -507,6 +541,44 @@ export function WeeklySchedule({
             })}
           </div>
 
+          {/* 하루 종일 이벤트 행 */}
+          {hasAnyAllDayEvents && (
+            <div className="flex border-b border-border">
+              <div className="w-16 flex-shrink-0 border-r border-border flex items-center justify-end pr-2">
+                <span className="text-xs text-muted-foreground font-medium">종일</span>
+              </div>
+              {visibleDays.map((date) => {
+                const dateStr = toKoreanDateString(date);
+                const allDayEvents = getAllDayEventsForDate(date);
+                const isToday = dateStr === today;
+                return (
+                  <div
+                    key={`allday-${dateStr}`}
+                    className={`flex-1 border-r border-border last:border-r-0 p-1 min-h-[28px] flex flex-wrap gap-1 ${
+                      isToday ? "bg-primary/5" : ""
+                    }`}
+                  >
+                    {allDayEvents.map((block) => (
+                      <button
+                        key={block.id}
+                        onClick={() => onSelectBlock(block.id)}
+                        className="px-1.5 py-0.5 text-xs rounded truncate max-w-full cursor-pointer hover:opacity-80 transition-opacity"
+                        style={{
+                          backgroundColor: GRADE_COLORS.종일.bg,
+                          borderLeft: `3px solid ${GRADE_COLORS.종일.border}`,
+                          color: GRADE_COLORS.종일.text,
+                        }}
+                        title={getBlockDisplayName(block)}
+                      >
+                        {getBlockDisplayName(block)}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* 시간 그리드 */}
           <div className="flex">
             {/* 시간 라벨 */}
@@ -588,11 +660,12 @@ export function WeeklySchedule({
                     // 학생 연결 여부로 수업/일정 구분
                     const isLesson = studentId !== null;
 
-                    // 색상 결정: 특별 일정(비정규 OR 학생 없음) vs 정규 수업(학년별)
-                    const isSpecialEvent = !isRegular || !studentId;
-                    const color = isSpecialEvent
-                      ? GRADE_COLORS.특별일정
-                      : getStudentGradeColor(studentId);
+                    // 색상 결정: 일정(학생 없음) → 파란색, 비정규 수업 → 노란색, 정규 수업 → 학년별
+                    const color = !isLesson
+                      ? GRADE_COLORS.일정
+                      : !isRegular
+                        ? GRADE_COLORS.특별일정
+                        : getStudentGradeColor(studentId);
 
                     const bgColor = color.bg;
                     const borderColor = color.border;
@@ -638,10 +711,10 @@ export function WeeklySchedule({
                           <div
                             className="text-xs font-medium truncate leading-tight"
                             style={{ color: color.text }}
-                            title={event.studentName || getBlockTitle(event.block.content, 30) || "수업"}
+                            title={event.studentName || getBlockDisplayName(event.block) || "일정"}
                           >
                             {isLesson && isRegular && <span className="mr-0.5" title="정규 수업">↻</span>}
-                            {event.studentName || getBlockTitle(event.block.content, 10) || "수업"}
+                            {event.studentName || getBlockDisplayName(event.block) || "일정"}
                           </div>
                           {/* 시간 - 공간 있을 때만 표시 */}
                           {event.duration >= 30 && (
@@ -821,6 +894,28 @@ export function WeeklySchedule({
             setShowAddModal(false);
             setAddModalData(null);
           }}
+          onAddEvent={(name, isAllDay, time, duration) => {
+            const newBlockId = onAddBlock();
+            onUpdateBlockName(newBlockId, name);
+
+            // 하루 종일: date만 (time 없음), 시간 지정: date + time
+            onAddProperty(newBlockId, "date", undefined, {
+              type: "date",
+              date: addModalData.date,
+              ...(isAllDay ? {} : { time: time! }),
+            });
+
+            // 시간 지정이면 duration 추가
+            if (!isAllDay && duration) {
+              onAddProperty(newBlockId, "duration", undefined, {
+                type: "duration",
+                minutes: duration,
+              });
+            }
+
+            setShowAddModal(false);
+            setAddModalData(null);
+          }}
         />
       )}
     </main>
@@ -848,6 +943,7 @@ function AddLessonModal({
   onEditEvent,
   onUpdate,
   onAdd,
+  onAddEvent,
 }: {
   date: string;
   time: string;
@@ -862,6 +958,7 @@ function AddLessonModal({
   onEditEvent: (event: ScheduleEvent) => void;
   onUpdate: (blockId: string, studentId: string, time: string, duration: number, isRegular: boolean) => void;
   onAdd: (studentId: string, time: string, duration: number, isRegular: boolean) => void;
+  onAddEvent: (name: string, isAllDay: boolean, time?: string, duration?: number) => void;
 }) {
   const isEditMode = !!editingEvent;
 
@@ -881,6 +978,11 @@ function AddLessonModal({
     const repeatProp = editingEvent.block.properties.find(p => p.propertyType === "repeat");
     return repeatProp?.value.type === "repeat" && repeatProp.value.config !== null;
   };
+
+  type ModalTab = "lesson" | "event";
+  const [activeTab, setActiveTab] = useState<ModalTab>("lesson");
+  const [eventName, setEventName] = useState("");
+  const [isAllDay, setIsAllDay] = useState(false);
 
   const [selectedStudent, setSelectedStudent] = useState(getInitialStudentId);
   const [startTime, setStartTime] = useState(isEditMode ? editingEvent.startTime : time);
@@ -941,9 +1043,36 @@ function AddLessonModal({
         className="bg-white rounded-xl shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-lg mb-4">
-          {isEditMode ? "수업 수정" : "수업 추가"}
-        </h3>
+        {isEditMode ? (
+          <h3 className="font-semibold text-lg mb-4">
+            {editingEvent?.block.properties.some(p => p.propertyType === "person") ? "수업 수정" : "일정 수정"}
+          </h3>
+        ) : (
+          <div className="flex border-b border-gray-200 mb-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab("lesson")}
+              className={`flex-1 pb-2 text-sm font-medium transition-colors ${
+                activeTab === "lesson"
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              수업 추가
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("event")}
+              className={`flex-1 pb-2 text-sm font-medium transition-colors ${
+                activeTab === "event"
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              일정 추가
+            </button>
+          </div>
+        )}
 
         {/* 시간 충돌 경고 배너 - 기존 일정 클릭 시 수정 모드로 전환 */}
         {!isEditMode && overlappingEvents && overlappingEvents.length > 0 && (
@@ -963,7 +1092,7 @@ function AddLessonModal({
                     onClick={() => onEditEvent(event)}
                     className="w-full text-left px-2 py-1.5 rounded hover:bg-amber-100 text-sm text-amber-900 transition-colors"
                   >
-                    {event.studentName || getBlockTitle(event.block.content, 10) || "일정"} {event.startTime}~{endTime}
+                    {event.studentName || getBlockDisplayName(event.block) || "일정"} {event.startTime}~{endTime}
                   </button>
                 );
               })}
@@ -982,85 +1111,181 @@ function AddLessonModal({
             </div>
           </div>
 
-          {/* 학생 선택 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              학생
-            </label>
-            <select
-              value={selectedStudent}
-              onChange={(e) => handleStudentChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="">선택하세요</option>
-              {studentBlocks.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {getBlockDisplayName(student)}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(isEditMode || activeTab === "lesson") ? (
+            <>
+              {/* 학생 선택 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  학생
+                </label>
+                <select
+                  value={selectedStudent}
+                  onChange={(e) => handleStudentChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">선택하세요</option>
+                  {studentBlocks.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {getBlockDisplayName(student)}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* 시작 시간 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              시작 시간
-            </label>
-            <div className="flex gap-1.5 flex-wrap">
-              {timeOptions.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setStartTime(t)}
-                  className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
-                    startTime === t
-                      ? "bg-primary text-white border-primary"
-                      : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+              {/* 시작 시간 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  시작 시간
+                </label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {timeOptions.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setStartTime(t)}
+                      className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                        startTime === t
+                          ? "bg-primary text-white border-primary"
+                          : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 수업 시간 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  수업 시간
+                </label>
+                <select
+                  value={duration}
+                  onChange={(e) => setDuration(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  {settings.durationOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}분
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 매주 반복 (정규 수업) */}
+              <button
+                type="button"
+                onClick={() => setIsRegular(!isRegular)}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <span
+                  className={`w-5 h-5 border-2 rounded flex items-center justify-center ${
+                    isRegular
+                      ? "bg-gray-900 border-gray-900 text-white"
+                      : "bg-white border-gray-400"
                   }`}
                 >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
+                  {isRegular && "✓"}
+                </span>
+                <span className="text-sm text-gray-700">
+                  매주 반복 (정규 수업)
+                </span>
+              </button>
+            </>
+          ) : (
+            <>
+              {/* 일정 이름 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  일정 이름
+                </label>
+                <input
+                  type="text"
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  placeholder="일정 이름을 입력하세요"
+                  autoFocus
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
 
-          {/* 수업 시간 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              수업 시간
-            </label>
-            <select
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              {settings.durationOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}분
-                </option>
-              ))}
-            </select>
-          </div>
+              {/* 종류: 하루 종일 / 시간 지정 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  종류
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAllDay(true)}
+                    className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                      isAllDay
+                        ? "bg-primary text-white border-primary"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    하루 종일
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsAllDay(false)}
+                    className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                      !isAllDay
+                        ? "bg-primary text-white border-primary"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    시간 지정
+                  </button>
+                </div>
+              </div>
 
-          {/* 매주 반복 (정규 수업) */}
-          <button
-            type="button"
-            onClick={() => setIsRegular(!isRegular)}
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <span
-              className={`w-5 h-5 border-2 rounded flex items-center justify-center ${
-                isRegular
-                  ? "bg-gray-900 border-gray-900 text-white"
-                  : "bg-white border-gray-400"
-              }`}
-            >
-              {isRegular && "✓"}
-            </span>
-            <span className="text-sm text-gray-700">
-              매주 반복 (정규 수업)
-            </span>
-          </button>
+              {/* 시간 지정일 때만 시작 시간 + 소요 시간 */}
+              {!isAllDay && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      시작 시간
+                    </label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {timeOptions.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setStartTime(t)}
+                          className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                            startTime === t
+                              ? "bg-primary text-white border-primary"
+                              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      소요 시간
+                    </label>
+                    <select
+                      value={duration}
+                      onChange={(e) => setDuration(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      {settings.durationOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}분
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
 
         {/* 버튼 */}
@@ -1075,11 +1300,13 @@ function AddLessonModal({
             onClick={() => {
               if (isEditMode && editingEvent) {
                 onUpdate(editingEvent.block.id, selectedStudent, startTime, duration, isRegular);
+              } else if (activeTab === "event") {
+                onAddEvent(eventName.trim(), isAllDay, isAllDay ? undefined : startTime, isAllDay ? undefined : duration);
               } else {
                 onAdd(selectedStudent, startTime, duration, isRegular);
               }
             }}
-            disabled={!selectedStudent}
+            disabled={activeTab === "lesson" || isEditMode ? !selectedStudent : !eventName.trim()}
             className="flex-1 px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isEditMode ? "저장" : "추가"}
