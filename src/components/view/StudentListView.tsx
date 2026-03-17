@@ -106,14 +106,23 @@ export function StudentListView({
 
   const handleShareClick = useCallback(async () => {
     if (!isSupabaseConfigured()) return;
+    // 토큰이 있으면 즉시 새 창 (팝업 차단 회피)
+    if (shareToken) {
+      window.open(`${window.location.origin}/share/${shareToken}`, "_blank");
+      return;
+    }
+    // 토큰이 없으면 먼저 빈 창을 열고, 생성 후 URL 설정
+    const newWindow = window.open("", "_blank");
     setShareLoading(true);
-    const result = shareToken
-      ? { token: shareToken }
-      : await createShareLink();
+    const result = await createShareLink();
     if (result) {
       setShareToken(result.token);
       const url = `${window.location.origin}/share/${result.token}`;
-      window.open(url, "_blank");
+      if (newWindow) {
+        newWindow.location.href = url;
+      }
+    } else {
+      newWindow?.close();
     }
     setShareLoading(false);
   }, [shareToken]);
