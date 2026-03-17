@@ -65,11 +65,11 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
 
   // 학생의 수업 수 계산
   const getLessonCount = useCallback((studentId: string) => {
-    return blocks.filter((b) => {
+    return localBlocks.filter((b) => {
       const personProp = b.properties.find((p) => p.propertyType === "person");
       return personProp?.value?.type === "person" && personProp.value.blockIds.includes(studentId);
     }).length;
-  }, [blocks]);
+  }, [localBlocks]);
 
   // 검색 & 필터 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -119,7 +119,7 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
     const weekStart = getWeekStart(today);
     const weekEnd = getWeekEnd(today);
 
-    return blocks.filter((b) => {
+    return localBlocks.filter((b) => {
       const dateProp = b.properties.find((p) => p.propertyType === "date");
       const personProp = b.properties.find((p) => p.propertyType === "person");
       if (!dateProp || !personProp) return false;
@@ -129,7 +129,7 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
 
       return hasStudent && isDateInRange(dateValue, weekStart, weekEnd);
     }).length;
-  }, [blocks]);
+  }, [localBlocks]);
 
   // 지난주 수업 횟수
   const lastWeekLessons = useMemo(() => {
@@ -139,7 +139,7 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
     const weekStart = getWeekStart(lastWeekDate);
     const weekEnd = getWeekEnd(lastWeekDate);
 
-    return blocks.filter((b) => {
+    return localBlocks.filter((b) => {
       const dateProp = b.properties.find((p) => p.propertyType === "date");
       const personProp = b.properties.find((p) => p.propertyType === "person");
       if (!dateProp || !personProp) return false;
@@ -149,7 +149,7 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
 
       return hasStudent && isDateInRange(dateValue, weekStart, weekEnd);
     }).length;
-  }, [blocks]);
+  }, [localBlocks]);
 
   // 수강료 현황
   const [billingMonth, setBillingMonth] = useState(() => getKoreanToday().slice(0, 7));
@@ -175,6 +175,70 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
       return `${ny}-${String(nm).padStart(2, "0")}`;
     });
   }, []);
+
+  // 결제 토글 핸들러
+  const handleTogglePayment = useCallback((student: Block, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const enrollProp = student.properties.find(p => p.propertyType === "enrollment");
+    if (!enrollProp || enrollProp.value?.type !== "enrollment") return;
+
+    const value = enrollProp.value;
+    const existing = value.records[billingMonth] || { enrolled: false };
+    const newProperties = student.properties.map(p =>
+      p.id === enrollProp.id
+        ? {
+            ...p,
+            value: {
+              ...value,
+              records: {
+                ...value.records,
+                [billingMonth]: {
+                  ...existing,
+                  enrolled: !existing.enrolled,
+                  ...(!existing.enrolled ? { actualDate: getKoreanToday() } : {}),
+                },
+              },
+            },
+          }
+        : p
+    ) as BlockProperty[];
+
+    // Optimistic update
+    setLocalBlocks(prev => prev.map(b => b.id === student.id ? { ...b, properties: newProperties } : b));
+    updateBlockProperties(student.id, newProperties);
+  }, [billingMonth, updateBlockProperties]);
+
+  // 전미결 클릭: 가장 오래된 미결제 월을 결제 처리
+  const handlePayPrevMonth = useCallback((student: Block, unpaidMonth: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const enrollProp = student.properties.find(p => p.propertyType === "enrollment");
+    if (!enrollProp || enrollProp.value?.type !== "enrollment") return;
+
+    const value = enrollProp.value;
+    const existing = value.records[unpaidMonth] || { enrolled: false };
+    const newProperties = student.properties.map(p =>
+      p.id === enrollProp.id
+        ? {
+            ...p,
+            value: {
+              ...value,
+              records: {
+                ...value.records,
+                [unpaidMonth]: {
+                  ...existing,
+                  enrolled: true,
+                  actualDate: getKoreanToday(),
+                },
+              },
+            },
+          }
+        : p
+    ) as BlockProperty[];
+
+    // Optimistic update
+    setLocalBlocks(prev => prev.map(b => b.id === student.id ? { ...b, properties: newProperties } : b));
+    updateBlockProperties(student.id, newProperties);
+  }, [updateBlockProperties]);
 
   // 학년별 분포
   const tagDistribution = useMemo(() => {
@@ -270,7 +334,7 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
       {/* 상단 안내 배너 */}
       <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-200 text-center">
         <span className="text-sm text-blue-700 font-medium">
-          공유된 학생 목록 (읽기 전용)
+          공유된 학생 목록
         </span>
       </div>
 
@@ -419,19 +483,24 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
                           {enrollValue.fee}만원·{enrollValue.dayOfMonth}일
                         </span>
                         {firstUnpaidPrev && (
-                          <span className="ml-auto px-2 py-0.5 text-xs rounded-full font-medium shrink-0 bg-orange-100 text-orange-600">
+                          <button
+                            onClick={(e) => handlePayPrevMonth(student, firstUnpaidPrev, e)}
+                            className="ml-auto px-2 py-0.5 text-xs rounded-full font-medium transition-colors shrink-0 bg-orange-100 text-orange-600 hover:bg-orange-200"
+                            title={`${parseInt(firstUnpaidPrev.split("-")[1], 10)}월 미결제`}
+                          >
                             전미결
-                          </span>
+                          </button>
                         )}
-                        <span
-                          className={`${firstUnpaidPrev ? "" : "ml-auto "}px-2 py-0.5 text-xs rounded-full font-medium shrink-0 ${
+                        <button
+                          onClick={(e) => handleTogglePayment(student, e)}
+                          className={`${firstUnpaidPrev ? "" : "ml-auto "}px-2 py-0.5 text-xs rounded-full font-medium transition-colors shrink-0 ${
                             isPaid
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-50 text-red-500"
+                              ? "bg-green-100 text-green-700 hover:bg-green-200"
+                              : "bg-red-50 text-red-500 hover:bg-red-100"
                           }`}
                         >
-                          {isPaid ? "결제" : "미결제"}
-                        </span>
+                          {isPaid ? "✓ 결제" : "미결제"}
+                        </button>
                       </>
                     )}
                   </div>
