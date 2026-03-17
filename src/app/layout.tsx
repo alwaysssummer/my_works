@@ -40,7 +40,15 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="BlockNote" />
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js');
+            navigator.serviceWorker.register('/sw.js').then(function(reg) {
+              setInterval(function() { reg.update(); }, 60000);
+            });
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+              if (refreshing) return;
+              refreshing = true;
+              window.location.reload();
+            });
           }
         `}} />
       </head>
