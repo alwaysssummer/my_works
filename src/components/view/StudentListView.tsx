@@ -234,8 +234,20 @@ export function StudentListView({
         }
         return true;
       })
-      .sort((a, b) => getLessonCount(b.id) - getLessonCount(a.id));
-  }, [studentBlocks, searchQuery, selectedGrade, gradeTags]);
+      .sort((a, b) => {
+        // 학년 순서: 중등(0) → 고1(1) → 고2(2) → 고3(3), 미지정은 마지막
+        const getGradeIndex = (s: Block) => {
+          const tagProp = s.properties.find((p) => p.propertyType === "tag");
+          if (tagProp?.value?.type !== "tag") return GRADE_TABS.length;
+          const idx = gradeTags.findIndex((gt) => gt && tagProp.value.type === "tag" && tagProp.value.tagIds.includes(gt.id));
+          return idx === -1 ? GRADE_TABS.length : idx;
+        };
+        const gradeA = getGradeIndex(a);
+        const gradeB = getGradeIndex(b);
+        if (gradeA !== gradeB) return gradeA - gradeB;
+        return getLessonCount(b.id) - getLessonCount(a.id);
+      });
+  }, [studentBlocks, searchQuery, selectedGrade, gradeTags, getLessonCount]);
 
   const maxTagCount = Math.max(...tagDistribution.map((t) => t.count), 1);
 
@@ -284,7 +296,7 @@ export function StudentListView({
 
   // Context에서 NoteView 액션 가져오기
   const actions = useBlockActions();
-  const { tags: allTags, createTag } = useTags();
+  const { tags: allTags, createTag, updateTag, deleteTag } = useTags();
 
   // 학년 태그 자동 생성
   const gradeTagsCreated = useRef(false);
@@ -346,6 +358,12 @@ export function StudentListView({
     }
   }, [filteredStudents, actions]);
 
+  // 태그 삭제 래퍼 (글로벌 태그 삭제 + 모든 블록에서 제거)
+  const handleDeleteTag = useCallback((tagId: string) => {
+    deleteTag(tagId);
+    actions.removeTagFromAllBlocks(tagId);
+  }, [deleteTag, actions]);
+
   // 학년 토글 핸들러 (단일 선택, 재클릭 해제)
   const handleGradeToggle = useCallback((gradeIdx: number) => {
     if (!inlineBlock) return;
@@ -380,14 +398,6 @@ export function StudentListView({
 
   return (
     <main className="flex-1 h-screen overflow-auto bg-background">
-      {/* 헤더 */}
-      <header className="h-14 flex items-center px-6 border-b border-border">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">○</span>
-          <span className="font-medium">학생 대시보드</span>
-        </div>
-      </header>
-
       {/* 모바일 컴팩트 요약 바 */}
       <div className="lg:hidden px-4 py-2 border-b border-border bg-card flex items-center gap-4 text-sm">
         <span className="flex items-center gap-1 text-muted-foreground">
@@ -541,7 +551,7 @@ export function StudentListView({
                       key={student.id}
                       data-list-item
                       onClick={() => handleStudentClick(student.id)}
-                      className={`px-4 py-3 cursor-pointer transition-colors flex items-center gap-3 group ${
+                      className={`px-4 py-1.5 cursor-pointer transition-colors flex items-center gap-3 group ${
                         inlineStudentId === student.id
                           ? "bg-primary/10 border-l-2 border-l-primary"
                           : isFocused
@@ -659,6 +669,8 @@ export function StudentListView({
               onUpdatePropertyName={actions.updatePropertyName}
               onRemoveProperty={actions.removeProperty}
               onCreateTag={createTag}
+              onUpdateTag={updateTag}
+              onDeleteTag={handleDeleteTag}
               onMoveToColumn={actions.moveToColumn}
               onDeleteBlock={handleInlineDelete}
               onClose={() => setInlineStudentId(null)}

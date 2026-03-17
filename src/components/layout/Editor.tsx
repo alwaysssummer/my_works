@@ -55,6 +55,8 @@ interface EditorProps {
   onRemoveProperty: (blockId: string, propertyId: string) => void;
   onRemovePropertyByType: (blockId: string, propertyType: PropertyType) => void;
   onCreateTag: (name: string, color: string) => Tag;
+  onUpdateTag?: (id: string, updates: Partial<Omit<Tag, "id">>) => void;
+  onDeleteTag?: (id: string) => void;
   onApplyType: (blockId: string, typeId: string) => void;
   onMoveBlockUp: (id: string) => void;
   onMoveBlockDown: (id: string) => void;
@@ -102,6 +104,8 @@ export function Editor({
   onRemoveProperty,
   onRemovePropertyByType,
   onCreateTag,
+  onUpdateTag,
+  onDeleteTag,
   onApplyType,
   onMoveBlockUp,
   onMoveBlockDown,
@@ -558,6 +562,8 @@ export function Editor({
             onUpdatePropertyName={onUpdatePropertyName}
             onRemoveProperty={onRemoveProperty}
             onCreateTag={onCreateTag}
+            onUpdateTag={onUpdateTag}
+            onDeleteTag={onDeleteTag}
             onMoveToColumn={onMoveToColumn}
             onDeleteBlock={onDeleteBlock}
             onNavigate={(blockId) => blockId && setPanelBlockId(blockId)}

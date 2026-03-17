@@ -55,6 +55,9 @@ export interface BlockActions {
   selectAllBlocks: (blockIds: string[]) => void;
   clearSelection: () => void;
   deleteSelectedBlocks: () => void;
+
+  // 태그 정리
+  removeTagFromAllBlocks: (tagId: string) => void;
 }
 
 // 데이터 인터페이스 분리
@@ -158,6 +161,9 @@ interface BlockContextValue {
   selectAllBlocks: (blockIds: string[]) => void;
   clearSelection: () => void;
   deleteSelectedBlocks: () => void;
+
+  // 태그 정리
+  removeTagFromAllBlocks: (tagId: string) => void;
 }
 
 const BlockContext = createContext<BlockContextValue | null>(null);
@@ -202,6 +208,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     selectAllBlocks: blockState.selectAllBlocks,
     clearSelection: blockState.clearSelection,
     deleteSelectedBlocks: blockState.deleteSelectedBlocks,
+    removeTagFromAllBlocks: blockState.removeTagFromAllBlocks,
   }), [
     blockState.addBlock,
     blockState.updateBlock,
@@ -234,6 +241,7 @@ export function BlockProvider({ children }: BlockProviderProps) {
     blockState.selectAllBlocks,
     blockState.clearSelection,
     blockState.deleteSelectedBlocks,
+    blockState.removeTagFromAllBlocks,
   ]);
 
   // 데이터 객체

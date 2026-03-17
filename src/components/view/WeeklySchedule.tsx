@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Block, BlockProperty, getBlockDisplayName } from "@/types/block";
 import { PropertyType, Tag } from "@/types/property";
 import { ScheduleSettings } from "@/types/settings";
@@ -393,6 +393,20 @@ export function WeeklySchedule({
   const currentMinutes = (koreanTime.hours - settings.startHour) * 60 + koreanTime.minutes;
   const isCurrentWeek = weekDays.some((d) => toKoreanDateString(d) === today);
 
+  // 스크롤 컨테이너 ref
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // 시간표 진입 시 현재 시간 위치로 자동 스크롤
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !isCurrentWeek) return;
+
+    const scrollTarget = (currentMinutes / 10) * (40 / 3);
+    const offset = 80;
+    container.scrollTop = Math.max(0, scrollTarget - offset);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCurrentWeek]);
+
   // 주간 범위 텍스트
   const weekRangeText = useMemo(() => {
     const start = weekDays[0];
@@ -446,7 +460,7 @@ export function WeeklySchedule({
       </header>
 
       {/* 타임테이블 */}
-      <div className="flex-1 overflow-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
         <div className={isMobile ? "" : "min-w-[800px]"}>
           {/* 요일 헤더 */}
           <div className="flex border-b border-border sticky top-0 bg-background z-10">

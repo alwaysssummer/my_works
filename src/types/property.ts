@@ -14,7 +14,8 @@ export type PropertyType =
   | "contact"
   | "memo"
   | "urgent" // TOP 3 긴급 할일
-  | "duration"; // 수업 시간 (분)
+  | "duration" // 수업 시간 (분)
+  | "enrollment"; // 수강등록 (수업료 + 월별 기록)
 
 // 속성 정의
 export interface PropertyDefinition {
@@ -53,6 +54,13 @@ export interface RepeatConfig {
   weekdays?: number[]; // 주간 반복 시 요일 (0=일요일)
 }
 
+// 월별 수강등록 기록
+export interface EnrollmentRecord {
+  enrolled: boolean;       // 등록 여부 (체크박스)
+  actualDate?: string;     // 실제 등록일 (YYYY-MM-DD)
+  fee?: number;            // 해당 월 수업료 override (만원)
+}
+
 // 속성 값 타입
 export type PropertyValue =
   | { type: "checkbox"; checked: boolean; checkedAt?: string }
@@ -67,7 +75,8 @@ export type PropertyValue =
   | { type: "contact"; phone?: string; email?: string }
   | { type: "memo"; text: string }
   | { type: "urgent"; addedAt: string; slotIndex: number } // TOP 3 추가된 날짜, 슬롯 위치 (0, 1, 2)
-  | { type: "duration"; minutes: number }; // 수업 시간 (분)
+  | { type: "duration"; minutes: number } // 수업 시간 (분)
+  | { type: "enrollment"; fee: number; startDate: string; dayOfMonth: number; records: Record<string, EnrollmentRecord> }; // 수강등록
 
 // 기본 제공 속성
 export const DEFAULT_PROPERTIES: PropertyDefinition[] = [
@@ -130,6 +139,12 @@ export const DEFAULT_PROPERTIES: PropertyDefinition[] = [
     name: "수업 시간",
     type: "duration",
     icon: "⧖",
+  },
+  {
+    id: "enrollment",
+    name: "수강등록",
+    type: "enrollment",
+    icon: "📋",
   },
 ];
 
@@ -204,5 +219,10 @@ export function createPropertyValue(type: PropertyType): PropertyValue {
       return { type: "urgent", addedAt: getKoreanToday(), slotIndex: 0 };
     case "duration":
       return { type: "duration", minutes: 50 }; // 기본 50분
+    case "enrollment": {
+      const today = getKoreanToday();
+      const day = parseInt(today.split("-")[2], 10);
+      return { type: "enrollment", fee: 0, startDate: today, dayOfMonth: day, records: {} };
+    }
   }
 }

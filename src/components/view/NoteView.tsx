@@ -27,8 +27,10 @@ import {
   getPersonBlockIds,
   getUrgentSlot,
   getDurationMinutes,
+  getEnrollmentData,
   isStudentBlock as checkIsStudentBlock,
 } from "@/lib/propertyHelpers";
+import { EnrollmentEditor } from "@/components/property/EnrollmentEditor";
 import { findBacklinksTo, BacklinkRelation } from "@/lib/backlinkParser";
 import { SlashMenu } from "@/components/block/SlashMenu";
 
@@ -45,6 +47,8 @@ interface NoteViewProps {
   onUpdatePropertyName: (blockId: string, propertyId: string, name: string) => void;
   onRemoveProperty: (blockId: string, propertyId: string) => void;
   onCreateTag: (name: string, color: string) => Tag;
+  onUpdateTag?: (id: string, updates: Partial<Omit<Tag, "id">>) => void;
+  onDeleteTag?: (id: string) => void;
   onMoveToColumn?: (id: string, column: BlockColumn) => void;
   onDeleteBlock: (id: string) => void;
   onNavigate?: (blockId: string | null) => void;
@@ -83,6 +87,8 @@ export function NoteView({
   onUpdatePropertyName,
   onRemoveProperty,
   onCreateTag,
+  onUpdateTag,
+  onDeleteTag,
   onMoveToColumn,
   onDeleteBlock,
   onNavigate,
@@ -103,6 +109,12 @@ export function NoteView({
   const [showTagInput, setShowTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
+
+  // 태그 편집 메뉴 상태
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingTagName, setEditingTagName] = useState("");
+  const [showDeleteTagConfirm, setShowDeleteTagConfirm] = useState(false);
+  const tagEditRef = useRef<HTMLDivElement>(null);
 
   // 슬래시 메뉴 상태
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -164,6 +176,8 @@ export function NoteView({
 
   const durationProp = getPropertyByType(block, "duration");
   const durationMinutes = getDurationMinutes(block);
+
+  const enrollmentProp = getPropertyByType(block, "enrollment");
 
   // 속성 개수 (체크박스는 제목 앞에 표시하므로 제외)
   const propertyCount = block.properties.filter(p => p.propertyType !== "checkbox").length;
@@ -409,6 +423,55 @@ export function NoteView({
       setShowTagInput(false);
     }
   }, [newTagName, newTagColor, tagIds, tagProp, block.id, onCreateTag, onUpdateProperty]);
+
+  // 태그 우클릭 → 편집 메뉴 열기
+  const handleTagContextMenu = useCallback(
+    (e: React.MouseEvent, tag: Tag) => {
+      e.preventDefault();
+      setEditingTagId(tag.id);
+      setEditingTagName(tag.name);
+      setShowDeleteTagConfirm(false);
+    },
+    []
+  );
+
+  // 태그 이름 변경
+  const handleTagNameChange = useCallback(() => {
+    if (editingTagId && editingTagName.trim() && onUpdateTag) {
+      onUpdateTag(editingTagId, { name: editingTagName.trim() });
+    }
+  }, [editingTagId, editingTagName, onUpdateTag]);
+
+  // 태그 색상 변경
+  const handleTagColorChange = useCallback(
+    (color: string) => {
+      if (editingTagId && onUpdateTag) {
+        onUpdateTag(editingTagId, { color });
+      }
+    },
+    [editingTagId, onUpdateTag]
+  );
+
+  // 태그 삭제
+  const handleDeleteTag = useCallback(() => {
+    if (editingTagId && onDeleteTag) {
+      onDeleteTag(editingTagId);
+      setEditingTagId(null);
+      setShowDeleteTagConfirm(false);
+    }
+  }, [editingTagId, onDeleteTag]);
+
+  // 태그 편집 메뉴 외부 클릭 닫기
+  useEffect(() => {
+    if (!editingTagId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagEditRef.current && !tagEditRef.current.contains(e.target as Node)) {
+        setEditingTagId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [editingTagId]);
 
   // 메모 변경
   const handleMemoChange = useCallback(
@@ -839,23 +902,100 @@ export function NoteView({
                           ✕
                         </button>
                       </div>
-                      <div className="flex flex-wrap gap-2 ml-7">
+                      <div className="flex flex-wrap gap-2 ml-7 relative">
                         {allTags.map((tag) => (
-                          <button
-                            key={tag.id}
-                            onClick={() => handleToggleTag(tag.id)}
-                            className={`text-xs px-2 py-1 rounded transition-all ${
-                              tagIds.includes(tag.id)
-                                ? "ring-2 ring-offset-1"
-                                : "opacity-60 hover:opacity-100"
-                            }`}
-                            style={{
-                              backgroundColor: `${tag.color}20`,
-                              color: tag.color,
-                            }}
-                          >
-                            {tag.name}
-                          </button>
+                          <div key={tag.id} className="relative">
+                            <button
+                              onClick={() => handleToggleTag(tag.id)}
+                              onContextMenu={(e) => handleTagContextMenu(e, tag)}
+                              className={`text-xs px-2 py-1 rounded transition-all ${
+                                tagIds.includes(tag.id)
+                                  ? "ring-2 ring-offset-1"
+                                  : "opacity-60 hover:opacity-100"
+                              }`}
+                              style={{
+                                backgroundColor: `${tag.color}20`,
+                                color: tag.color,
+                              }}
+                            >
+                              {tag.name}
+                            </button>
+                            {/* 태그 편집 팝오버 */}
+                            {editingTagId === tag.id && (onUpdateTag || onDeleteTag) && (
+                              <div
+                                ref={tagEditRef}
+                                className="absolute top-full left-0 mt-1 z-50 bg-background border border-border rounded-lg shadow-lg p-3 min-w-[200px]"
+                              >
+                                {onUpdateTag && (
+                                  <>
+                                    <div className="mb-2">
+                                      <label className="text-xs text-muted-foreground mb-1 block">이름</label>
+                                      <input
+                                        type="text"
+                                        value={editingTagName}
+                                        onChange={(e) => setEditingTagName(e.target.value)}
+                                        onBlur={handleTagNameChange}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") handleTagNameChange();
+                                          if (e.key === "Escape") setEditingTagId(null);
+                                        }}
+                                        autoFocus
+                                        className="w-full bg-accent/30 border border-border rounded px-2 py-1 text-sm"
+                                      />
+                                    </div>
+                                    <div className="mb-2">
+                                      <label className="text-xs text-muted-foreground mb-1 block">색상</label>
+                                      <div className="flex gap-1.5 flex-wrap">
+                                        {TAG_COLORS.map((color) => (
+                                          <button
+                                            key={color}
+                                            onClick={() => handleTagColorChange(color)}
+                                            className={`w-5 h-5 rounded-full transition-all ${
+                                              tag.color === color ? "ring-2 ring-offset-1 ring-foreground/50" : "hover:scale-110"
+                                            }`}
+                                            style={{ backgroundColor: color }}
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                                {onDeleteTag && (
+                                  <>
+                                    <div className="border-t border-border my-2" />
+                                    {!showDeleteTagConfirm ? (
+                                      <button
+                                        onClick={() => setShowDeleteTagConfirm(true)}
+                                        className="w-full text-left text-xs text-destructive hover:bg-destructive/10 rounded px-2 py-1.5 transition-colors"
+                                      >
+                                        태그 삭제
+                                      </button>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        <p className="text-xs text-destructive">
+                                          이 태그를 사용하는 블록에서도 제거됩니다
+                                        </p>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={handleDeleteTag}
+                                            className="flex-1 text-xs px-2 py-1 bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
+                                          >
+                                            삭제
+                                          </button>
+                                          <button
+                                            onClick={() => setShowDeleteTagConfirm(false)}
+                                            className="flex-1 text-xs px-2 py-1 border border-border rounded hover:bg-accent"
+                                          >
+                                            취소
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         ))}
                         <button
                           onClick={() => setShowTagInput(!showTagInput)}
@@ -956,6 +1096,15 @@ export function NoteView({
                         </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* 수강등록 */}
+                  {enrollmentProp && (
+                    <EnrollmentEditor
+                      enrollmentProp={enrollmentProp}
+                      onUpdate={(val) => onUpdateProperty(block.id, enrollmentProp.id, val)}
+                      onRemove={() => onRemoveProperty(block.id, enrollmentProp.id)}
+                    />
                   )}
 
                   {/* 메모 */}

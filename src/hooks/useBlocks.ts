@@ -924,6 +924,26 @@ export function useBlocks() {
     clearSelection();
   }, [selectedBlockIds, clearSelection]);
 
+  // 모든 블록에서 특정 태그 ID 제거
+  const removeTagFromAllBlocks = useCallback((tagId: string) => {
+    setBlocks((prev) =>
+      prev.map((block) => {
+        const tagProp = block.properties.find((p) => p.propertyType === "tag");
+        if (!tagProp || tagProp.value?.type !== "tag") return block;
+        if (!tagProp.value.tagIds.includes(tagId)) return block;
+        return {
+          ...block,
+          properties: block.properties.map((p) =>
+            p.id === tagProp.id && p.value?.type === "tag"
+              ? { ...p, value: { type: "tag" as const, tagIds: p.value.tagIds.filter((id) => id !== tagId) } }
+              : p
+          ),
+          updatedAt: new Date(),
+        };
+      })
+    );
+  }, []);
+
   return {
     blocks,
     isLoaded,
@@ -974,5 +994,6 @@ export function useBlocks() {
     selectAllBlocks,
     clearSelection,
     deleteSelectedBlocks,
+    removeTagFromAllBlocks,
   };
 }

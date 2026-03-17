@@ -48,6 +48,8 @@ export interface ViewRouterProps {
   onCalendarSelectDate: (date: string) => void;
   onAddSchedule: (date: string, content: string, studentId?: string, isRepeat?: boolean, time?: string) => void;
   onCreateTag: (name: string, color?: string) => Tag;
+  onUpdateTag?: (id: string, updates: Partial<Omit<Tag, "id">>) => void;
+  onDeleteTag?: (id: string) => void;
   onApplyType: (blockId: string, typeId: string) => void;
   onToggleCheckbox: (blockId: string, checked: boolean) => void;
 
@@ -77,6 +79,8 @@ export function ViewRouter({
   onCalendarSelectDate,
   onAddSchedule,
   onCreateTag,
+  onUpdateTag,
+  onDeleteTag,
   onApplyType,
   onToggleCheckbox,
   selectedBlockId,
@@ -282,6 +286,8 @@ export function ViewRouter({
       onRemoveProperty={actions.removeProperty}
       onRemovePropertyByType={actions.removePropertyByType}
       onCreateTag={onCreateTag}
+      onUpdateTag={onUpdateTag}
+      onDeleteTag={onDeleteTag}
       onApplyType={onApplyType}
       onMoveBlockUp={actions.moveBlockUp}
       onMoveBlockDown={actions.moveBlockDown}

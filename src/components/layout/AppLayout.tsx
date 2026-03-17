@@ -39,9 +39,10 @@ function AppLayoutInner() {
     applyType,
     moveToColumn,
     top3Blocks,
+    removeTagFromAllBlocks,
   } = useBlockContext();
 
-  const { tags, createTag, getTagsByIds } = useTags();
+  const { tags, createTag, updateTag, deleteTag, getTagsByIds } = useTags();
   const { blockTypes, createBlockType, deleteBlockType } = useBlockTypes();
   const { customViews, createView, deleteView } = useCustomViews();
   const { view, changeView: changeViewOriginal, selectDate, selectCustomView } = useView();
@@ -221,6 +222,12 @@ function AppLayoutInner() {
     [contextBlocks, deleteBlock]
   );
 
+  // 태그 삭제 래퍼 (글로벌 태그 삭제 + 모든 블록에서 제거)
+  const handleDeleteTag = useCallback((tagId: string) => {
+    deleteTag(tagId);
+    removeTagFromAllBlocks(tagId);
+  }, [deleteTag, removeTagFromAllBlocks]);
+
   // 학생 선택 핸들러
   const handleSelectStudent = useCallback((studentId: string) => {
     setNoteViewBlockId(studentId);
@@ -230,6 +237,8 @@ function AppLayoutInner() {
   const handleAddStudent = useCallback(() => {
     const newBlockId = addBlock();
     addProperty(newBlockId, "contact");
+    addProperty(newBlockId, "tag");      // 학년
+    addProperty(newBlockId, "date");     // 날짜
     setNoteViewBlockId(newBlockId);
   }, [addBlock, addProperty]);
 
@@ -378,7 +387,7 @@ function AppLayoutInner() {
             onClick={() => handleChangeTab("schedule")}
             className="hidden lg:block text-base font-semibold whitespace-nowrap hover:opacity-70 transition-opacity"
           >
-            DEEP THINKING
+            DEEP THINK
           </button>
 
           {/* 입력창 */}
@@ -446,6 +455,8 @@ function AppLayoutInner() {
           onCalendarSelectDate={handleCalendarSelectDate}
           onAddSchedule={handleAddSchedule}
           onCreateTag={createTag}
+          onUpdateTag={updateTag}
+          onDeleteTag={handleDeleteTag}
           onApplyType={handleApplyTypeToBlock}
           onToggleCheckbox={handleToggleCheckbox}
           selectedBlockId={focusedBlockId}
@@ -478,6 +489,8 @@ function AppLayoutInner() {
           onUpdatePropertyName={updatePropertyName}
           onRemoveProperty={removeProperty}
           onCreateTag={createTag}
+          onUpdateTag={updateTag}
+          onDeleteTag={handleDeleteTag}
           onMoveToColumn={moveToColumn}
           onDeleteBlock={handleDeleteWithNav}
           onNavigate={handleNavigateBlock}

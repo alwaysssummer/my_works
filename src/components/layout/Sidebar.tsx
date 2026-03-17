@@ -64,7 +64,7 @@ export function Sidebar({
           onClick={() => onChangeView("weekly")}
           className="text-lg font-semibold text-sidebar-foreground hover:opacity-70 transition-opacity"
         >
-          DEEP THINKING
+          DEEP THINK
         </button>
       </div>
 

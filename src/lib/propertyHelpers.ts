@@ -1,5 +1,5 @@
 import { Block } from "@/types/block";
-import { BlockProperty, PropertyType, Tag, TAG_COLORS } from "@/types/property";
+import { BlockProperty, EnrollmentRecord, PropertyType, PropertyValue, Tag, TAG_COLORS } from "@/types/property";
 
 
 /**
@@ -37,6 +37,7 @@ export function extractAllProperties(block: Block) {
     memo: getPropertyByType(block, "memo"),
     urgent: getPropertyByType(block, "urgent"),
     duration: getPropertyByType(block, "duration"),
+    enrollment: getPropertyByType(block, "enrollment"),
   };
 }
 
@@ -191,6 +192,63 @@ export function isTodoBlock(block: Block): boolean {
  */
 export function isInTop3(block: Block): boolean {
   return hasPropertyType(block, "urgent");
+}
+
+/**
+ * enrollment 속성 값 추출
+ */
+export function getEnrollmentData(block: Block): Extract<PropertyValue, { type: "enrollment" }> | null {
+  const prop = getPropertyByType(block, "enrollment");
+  if (prop?.value?.type === "enrollment") return prop.value;
+  return null;
+}
+
+/**
+ * startDate월~endDate월(기본: 현재월)까지 "YYYY-MM" 배열 생성
+ */
+export function generateMonthRange(startDate: string, endDate?: string): string[] {
+  const [sy, sm] = startDate.split("-").map(Number);
+  const end = endDate || new Date().toISOString().slice(0, 10);
+  const [ey, em] = end.split("-").map(Number);
+
+  const months: string[] = [];
+  let y = sy, m = sm;
+  while (y < ey || (y === ey && m <= em)) {
+    months.push(`${y}-${String(m).padStart(2, "0")}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return months;
+}
+
+/**
+ * 해당 월의 예정 등록일 계산 (월말 클램핑: dayOfMonth=31이면 2월은 28/29일)
+ */
+export function getScheduledDate(yearMonth: string, dayOfMonth: number): string {
+  const [y, m] = yearMonth.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate(); // 해당 월의 마지막 날
+  const day = Math.min(dayOfMonth, lastDay);
+  return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * 수강등록 요약 계산
+ */
+export function getEnrollmentSummary(value: Extract<PropertyValue, { type: "enrollment" }>) {
+  const months = generateMonthRange(value.startDate);
+  const totalMonths = months.length;
+  let enrolledMonths = 0;
+  let totalFee = 0;
+
+  for (const month of months) {
+    const record = value.records[month];
+    if (record?.enrolled) {
+      enrolledMonths++;
+      totalFee += record.fee ?? value.fee;
+    }
+  }
+
+  return { totalMonths, enrolledMonths, totalFee };
 }
 
 /**
