@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Block } from "@/types/block";
 import { BlockType } from "@/types/blockType";
 import { Tag } from "@/types/property";
-import { Plus, ChevronLeft, ChevronRight, Search, X, Users, BookOpen, Trash2, DollarSign, Link2, Check } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Search, X, Users, BookOpen, Trash2, DollarSign, Link2 } from "lucide-react";
 import { useListNavigation } from "@/hooks/useListNavigation";
 import { getKoreanNow, getKoreanToday, toKoreanDateString } from "@/lib/dateFormat";
 import { getMonthlyBillingSummary } from "@/lib/propertyHelpers";
@@ -94,7 +94,6 @@ export function StudentListView({
   // 공유 링크 상태
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
 
   // 초기 로드 시 기존 토큰 조회 (첫 클릭 속도 개선)
   useEffect(() => {
@@ -114,9 +113,7 @@ export function StudentListView({
     if (result) {
       setShareToken(result.token);
       const url = `${window.location.origin}/share/${result.token}`;
-      await navigator.clipboard.writeText(url);
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
+      window.open(url, "_blank");
     }
     setShareLoading(false);
   }, [shareToken]);
@@ -536,21 +533,15 @@ export function StudentListView({
               <Plus className="w-4 h-4" />
               <span className={inlineBlock ? "hidden" : ""}>학생 추가</span>
             </button>
-            {/* 공유 버튼: 클릭 = 즉시 복사 */}
+            {/* 공유 버튼: 클릭 = 새 창에서 열기 */}
             <button
               onClick={handleShareClick}
               disabled={shareLoading}
-              className={`flex items-center gap-1 px-2 py-1.5 text-sm border rounded-lg transition-colors shrink-0 ${
-                shareCopied
-                  ? "text-green-600 border-green-300 bg-green-50"
-                  : "text-muted-foreground hover:text-foreground border-border hover:bg-accent"
-              } disabled:opacity-50`}
-              title={shareCopied ? "복사됨!" : "공유 링크 복사"}
+              className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors shrink-0 disabled:opacity-50"
+              title="공유 페이지 열기"
             >
               {shareLoading ? (
                 <Link2 className="w-4 h-4 animate-spin" />
-              ) : shareCopied ? (
-                <Check className="w-4 h-4" />
               ) : (
                 <Link2 className="w-4 h-4" />
               )}
