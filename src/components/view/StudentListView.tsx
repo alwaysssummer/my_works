@@ -11,8 +11,6 @@ import { getMonthlyBillingSummary } from "@/lib/propertyHelpers";
 import { useBlockActions } from "@/contexts/BlockContext";
 import { useTags } from "@/hooks/useTags";
 import { NoteView } from "@/components/view/NoteView";
-import { isSupabaseConfigured } from "@/lib/supabase";
-import { createShareLink, getActiveShareLink } from "@/lib/shareLink";
 
 const GRADE_TABS = [
   { name: "중등", color: "#10b981" },
@@ -90,42 +88,6 @@ export function StudentListView({
 
   // 삭제 확인 상태
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  // 공유 링크 상태
-  const [shareToken, setShareToken] = useState<string | null>(null);
-  const [shareLoading, setShareLoading] = useState(false);
-
-  // 초기 로드 시 기존 토큰 조회 (첫 클릭 속도 개선)
-  useEffect(() => {
-    if (isSupabaseConfigured()) {
-      getActiveShareLink().then((link) => {
-        if (link) setShareToken(link.token);
-      });
-    }
-  }, []);
-
-  const handleShareClick = useCallback(async () => {
-    if (!isSupabaseConfigured()) return;
-    // 토큰이 있으면 즉시 새 창 (팝업 차단 회피)
-    if (shareToken) {
-      window.open(`${window.location.origin}/share/${shareToken}`, "_blank");
-      return;
-    }
-    // 토큰이 없으면 먼저 빈 창을 열고, 생성 후 URL 설정
-    const newWindow = window.open("", "_blank");
-    setShareLoading(true);
-    const result = await createShareLink();
-    if (result) {
-      setShareToken(result.token);
-      const url = `${window.location.origin}/share/${result.token}`;
-      if (newWindow) {
-        newWindow.location.href = url;
-      }
-    } else {
-      newWindow?.close();
-    }
-    setShareLoading(false);
-  }, [shareToken]);
 
   // 날짜 유틸리티 함수
   const getWeekStart = (date: Date) => {
@@ -542,18 +504,13 @@ export function StudentListView({
               <Plus className="w-4 h-4" />
               <span className={inlineBlock ? "hidden" : ""}>학생 추가</span>
             </button>
-            {/* 공유 버튼: 클릭 = 새 창에서 열기 */}
+            {/* 공유 버튼: 고정 URL로 새 창 열기 */}
             <button
-              onClick={handleShareClick}
-              disabled={shareLoading}
-              className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors shrink-0 disabled:opacity-50"
+              onClick={() => window.open("/share/students", "_blank")}
+              className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors shrink-0"
               title="공유 페이지 열기"
             >
-              {shareLoading ? (
-                <Link2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Link2 className="w-4 h-4" />
-              )}
+              <Link2 className="w-4 h-4" />
             </button>
             {selectedIds.size > 0 && (
               <div className="flex items-center gap-2">
