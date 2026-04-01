@@ -18,6 +18,9 @@ import { DEFAULT_PROPERTIES } from "@/types/property";
 import { getKoreanToday } from "@/lib/dateFormat";
 import { getPropertyByType, getTagIds } from "@/lib/propertyHelpers";
 import { UnifiedInput } from "@/components/input";
+import { FloatingMemoContainer } from "@/components/floating";
+import { useFloatingMemos } from "@/hooks/useFloatingMemos";
+import { FloatingMemo } from "@/types/memo";
 
 // Sidebar에서 사용하던 모달 컴포넌트 (OverflowMenu에서 재사용)
 import { TypeCreateModal, ViewCreateModal } from "./OverflowModals";
@@ -48,6 +51,7 @@ function AppLayoutInner() {
   const { view, changeView: changeViewOriginal, selectDate, selectCustomView } = useView();
   const { studentBlocks, students } = useStudents(blocks);
   const { settings } = useSettings();
+  const { memos, addMemo, updateMemo, deleteMemo, toggleMinimize } = useFloatingMemos();
 
   const [showSearch, setShowSearch] = useState(false);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
@@ -370,6 +374,17 @@ function AppLayoutInner() {
     }
   }, [activeTab, handleChangeTab]);
 
+  // 메모 닫기 → 대기(queue)에 할일로 저장
+  const handleCloseMemo = useCallback((memo: FloatingMemo) => {
+    const lines = memo.text.trim().split("\n");
+    const name = lines[0] || "메모";
+    const content = lines.length > 1 ? lines.slice(1).join("\n") : "";
+    const newId = addBlock(undefined, { name, content });
+    addProperty(newId, "checkbox");
+    moveToColumn(newId, "queue");
+    deleteMemo(memo.id);
+  }, [addBlock, addProperty, moveToColumn, deleteMemo]);
+
   // 탭별 입력 컨텍스트
   const inputContext = useMemo((): "schedule" | "tasks" | "students" | "general" => {
     if (view.type === "dashboard" || view.type === "all" || view.type === "custom") return "general";
@@ -399,6 +414,7 @@ function AppLayoutInner() {
               onOpenFullPage={handleSelectBlock}
               inputContext={inputContext}
               onAfterSubmit={handleAfterSubmit}
+              onCreateFloatingMemo={addMemo}
             />
           </div>
 
@@ -518,6 +534,15 @@ function AppLayoutInner() {
           }}
         />
       )}
+
+      {/* 플로팅 메모 */}
+      <FloatingMemoContainer
+        memos={memos}
+        onUpdate={updateMemo}
+        onDelete={deleteMemo}
+        onClose={handleCloseMemo}
+        onToggleMinimize={toggleMinimize}
+      />
     </div>
   );
 }

@@ -17,18 +17,16 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
 
-  // _next/static만 캐시. HTML 포함 나머지는 전부 네트워크로.
+  // _next/static만 캐시. 네트워크 우선, 실패 시 캐시 폴백.
   if (request.url.includes('/_next/static/')) {
     event.respondWith(
-      caches.match(request).then((cached) =>
-        cached || fetch(request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-      )
+      fetch(request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(request))
     );
   }
 });

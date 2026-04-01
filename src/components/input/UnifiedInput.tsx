@@ -29,6 +29,8 @@ interface UnifiedInputProps {
   inputContext?: "schedule" | "tasks" | "students" | "general";
   /** 제출 완료 후 콜백 (탭 이동 등) */
   onAfterSubmit?: () => void;
+  /** 플로팅 메모 생성 콜백 */
+  onCreateFloatingMemo?: (text: string) => void;
 }
 
 /**
@@ -49,16 +51,16 @@ export function UnifiedInput({
   onOpenFullPage,
   inputContext = "general",
   onAfterSubmit,
+  onCreateFloatingMemo,
 }: UnifiedInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [isPinToggled, setIsPinToggled] = useState(false);
   const [pastedImages, setPastedImages] = useState<Array<{ id: string; url: string }>>([]);
 
-  const { addBlock, addProperty, togglePin } = useBlockActions();
+  const { addBlock, addProperty } = useBlockActions();
 
   // 모바일 감지 (lg breakpoint = 1024px 기준)
   const [isMobile, setIsMobile] = useState(false);
@@ -223,19 +225,12 @@ export function UnifiedInput({
 
     addParsedProperties(newBlockId, processed.properties);
 
-    // isPinToggled가 켜져 있으면 생성된 블록을 고정
-    if (isPinToggled) {
-      togglePin(newBlockId);
-      setIsPinToggled(false);
-    }
-
     // 초기화
     setValue("");
     setPastedImages([]);
-    // 포커스 유지 — 연속 입력 가능하도록 setIsFocused(false) 제거
 
     onAfterSubmit?.();
-  }, [value, pastedImages, addBlock, addParsedProperties, isPinToggled, togglePin, buildImageHtml, onAfterSubmit]);
+  }, [value, pastedImages, addBlock, addParsedProperties, buildImageHtml, onAfterSubmit]);
 
   // 전체 페이지로 확장
   const expandToFullPage = useCallback(() => {
@@ -247,10 +242,6 @@ export function UnifiedInput({
         name: "",
         content: "",
       });
-      if (isPinToggled) {
-        togglePin(newBlockId);
-        setIsPinToggled(false);
-      }
       setValue("");
       setPastedImages([]);
       setIsFocused(false);
@@ -267,11 +258,6 @@ export function UnifiedInput({
 
       addParsedProperties(newBlockId, processed.properties);
 
-      if (isPinToggled) {
-        togglePin(newBlockId);
-        setIsPinToggled(false);
-      }
-
       setValue("");
       setPastedImages([]);
       setIsFocused(false);
@@ -280,14 +266,22 @@ export function UnifiedInput({
         onOpenFullPage(newBlockId);
       }
     }
-  }, [value, pastedImages, addBlock, addParsedProperties, onOpenFullPage, isPinToggled, togglePin, buildImageHtml]);
+  }, [value, pastedImages, addBlock, addParsedProperties, onOpenFullPage, buildImageHtml]);
+
+  // 플로팅 메모 생성
+  const handleCreateMemo = useCallback(() => {
+    if (!value.trim() || !onCreateFloatingMemo) return;
+    onCreateFloatingMemo(value.trim());
+    setValue("");
+    setPastedImages([]);
+    setIsFocused(false);
+  }, [value, onCreateFloatingMemo]);
 
   // 취소
   const handleCancel = useCallback(() => {
     clearPastedImages();
     setValue("");
     setIsFocused(false);
-    setIsPinToggled(false);
   }, [clearPastedImages]);
 
   // 키보드 핸들러 (input — 비포커스 상태에서 클릭 시)
@@ -317,9 +311,9 @@ export function UnifiedInput({
           e.preventDefault();
           handleSubmit();
         } else if (e.shiftKey) {
-          // Shift+Enter: 전체 페이지 열기
+          // Shift+Enter: 플로팅 메모 생성
           e.preventDefault();
-          expandToFullPage();
+          handleCreateMemo();
         }
         // 일반 Enter: 줄바꿈 (기본 동작)
       }
@@ -328,7 +322,7 @@ export function UnifiedInput({
         handleCancel();
       }
     },
-    [handleSubmit, expandToFullPage, handleCancel]
+    [handleSubmit, handleCreateMemo, handleCancel]
   );
 
   // textarea onChange
@@ -371,12 +365,11 @@ export function UnifiedInput({
       }`}>
         <div className="flex items-center gap-2 px-3 py-1.5">
           <button
-            onClick={(e) => { e.stopPropagation(); setIsPinToggled(prev => !prev); }}
-            className={isPinToggled
-              ? "text-sm hover:opacity-70"
-              : "text-sm grayscale opacity-40 hover:opacity-70"}
-            title={isPinToggled ? "고정 해제" : "고정하여 저장"}
+            onClick={(e) => { e.stopPropagation(); handleCreateMemo(); }}
+            className={`text-sm ${value.trim() ? "hover:opacity-70 hover:scale-110 transition-transform" : "grayscale opacity-30 cursor-default"}`}
+            title="메모 고정 (Shift+Enter)"
             tabIndex={-1}
+            disabled={!value.trim()}
           >
             📌
           </button>
@@ -474,7 +467,7 @@ export function UnifiedInput({
               data-input-toolbar
             >
               <span className="text-[10px] text-muted-foreground/50">
-                Ctrl+Enter 저장
+                Ctrl+Enter 저장 · Shift+Enter 📌메모
               </span>
               <div className="flex items-center gap-1.5">
                 <button
