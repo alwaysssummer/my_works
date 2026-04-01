@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import "../../globals.css";
+import "../globals.css";
 
 export const metadata: Metadata = {
   title: "학생 목록 (공유)",
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
 };
 
-export default function ShareStudentsLayout({
+export default function ShareLayout({
   children,
 }: {
   children: React.ReactNode;
