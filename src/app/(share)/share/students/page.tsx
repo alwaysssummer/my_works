@@ -42,7 +42,13 @@ export default async function ShareStudentsPage() {
     return <ErrorPage message="서비스가 준비되지 않았습니다." />;
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  // Next.js fetch 캐시 우회 — 새로고침 시 항상 최신 데이터를 받도록
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      fetch: (input, init = {}) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
+  });
 
   // 전체 블록 로드 (토큰 검증 없이 직접 접근)
   const { data: blocksData, error: blocksError } = await supabase
@@ -51,6 +57,7 @@ export default async function ShareStudentsPage() {
     .order("sort_order", { ascending: true });
 
   if (blocksError || !blocksData) {
+    console.error("[share/students] blocks load failed:", blocksError);
     return <ErrorPage message="데이터를 불러올 수 없습니다." />;
   }
 

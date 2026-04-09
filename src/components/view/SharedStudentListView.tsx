@@ -1,11 +1,29 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Block, BlockProperty } from "@/types/block";
 import { PropertyValue, EnrollmentRecord } from "@/types/property";
-import { ChevronLeft, ChevronRight, Search, X, Users, BookOpen, DollarSign, ArrowLeft, Phone, Mail } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, Users, BookOpen, DollarSign, ArrowLeft, Phone, Mail, Loader2, Check, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getMonthlyBillingSummary, generateMonthRange, getScheduledDate, getEnrollmentSummary } from "@/lib/propertyHelpers";
+
+// DB 형식 → 앱 형식 변환 (Realtime 이벤트 처리용)
+function dbToBlock(row: any): Block {
+  return {
+    id: row.id,
+    name: row.name || "",
+    content: row.content || "",
+    indent: row.indent || 0,
+    isCollapsed: row.is_collapsed || false,
+    isPinned: row.is_pinned || false,
+    isDeleted: row.is_deleted || false,
+    column: row.column || "inbox",
+    properties: row.properties || [],
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
+  };
+}
 
 const GRADE_TABS = [
   { name: "중등", color: "#10b981" },
@@ -351,24 +369,111 @@ function StudentDetail({ student, allBlocks, onUpdate, onUpdateName, onBack }: S
 export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
   const [localBlocks, setLocalBlocks] = useState<Block[]>(blocks);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingUpdatesRef = useRef<Set<string>>(new Set());
+
+  // 저장 상태 표시 (2초 후 자동 해제)
+  const showSaveStatus = useCallback((status: 'saved' | 'error') => {
+    setSaveStatus(status);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
+  }, []);
+
+  // Supabase Realtime 구독 — 외부 변경 실시간 반영
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channel = supabase.channel('shared-blocks')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'blocks' },
+        (payload: any) => {
+          const blockId = payload.new?.id || payload.old?.id;
+          if (!blockId) return;
+
+          // 내가 방금 보낸 변경이면 무시 (에코 방지)
+          if (pendingUpdatesRef.current.has(blockId)) {
+            pendingUpdatesRef.current.delete(blockId);
+            return;
+          }
+
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updated = dbToBlock(payload.new);
+            setLocalBlocks(prev => prev.map(b => b.id === updated.id ? updated : b));
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            const inserted = dbToBlock(payload.new);
+            setLocalBlocks(prev => {
+              if (prev.some(b => b.id === inserted.id)) return prev;
+              return [...prev, inserted];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setLocalBlocks(prev => prev.filter(b => b.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase!.removeChannel(channel);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   const studentBlocks = useMemo(() => {
     return localBlocks.filter(b => b.properties.some(p => p.propertyType === "contact"));
   }, [localBlocks]);
 
-  // Supabase 업데이트 헬퍼
+  // 공통 업데이트 헬퍼 — .select()로 실제 반영된 행을 검증
+  // (RLS가 막으면 error 없이 0행만 영향 → 그냥 .update만으로는 실패를 알 수 없음)
+  const persistBlockUpdate = useCallback(async (
+    blockId: string,
+    patch: Record<string, unknown>
+  ): Promise<boolean> => {
+    if (!supabase) {
+      console.error("[share] Supabase 미설정 — 저장 불가");
+      showSaveStatus('error');
+      return false;
+    }
+    setSaveStatus('saving');
+    pendingUpdatesRef.current.add(blockId);
+    try {
+      const { data, error } = await supabase
+        .from("blocks")
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq("id", blockId)
+        .select("id");
+
+      if (error) {
+        console.error("[share] update 실패:", error);
+        showSaveStatus('error');
+        return false;
+      }
+      if (!data || data.length === 0) {
+        // RLS 정책상 행이 보이지 않거나 권한이 없는 경우
+        console.error("[share] update 0행 — RLS 또는 권한 문제로 저장되지 않음", { blockId, patch });
+        showSaveStatus('error');
+        return false;
+      }
+      showSaveStatus('saved');
+      return true;
+    } catch (err) {
+      console.error("[share] update 예외:", err);
+      showSaveStatus('error');
+      return false;
+    }
+  }, [showSaveStatus]);
+
+  // Supabase 업데이트 헬퍼 (에러 핸들링 포함)
   const updateBlockProperties = useCallback(async (blockId: string, properties: BlockProperty[]) => {
     // Optimistic update
     setLocalBlocks(prev => prev.map(b => b.id === blockId ? { ...b, properties } : b));
-    if (!supabase) return;
-    await supabase.from("blocks").update({ properties, updated_at: new Date().toISOString() }).eq("id", blockId);
-  }, []);
+    await persistBlockUpdate(blockId, { properties });
+  }, [persistBlockUpdate]);
 
   const updateBlockName = useCallback(async (blockId: string, name: string) => {
     setLocalBlocks(prev => prev.map(b => b.id === blockId ? { ...b, name } : b));
-    if (!supabase) return;
-    await supabase.from("blocks").update({ name, updated_at: new Date().toISOString() }).eq("id", blockId);
-  }, []);
+    await persistBlockUpdate(blockId, { name });
+  }, [persistBlockUpdate]);
 
   const getPlainText = (html: string) => {
     if (typeof window === "undefined") return html;
@@ -491,8 +596,8 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
         : p
     ) as BlockProperty[];
     setLocalBlocks(prev => prev.map(b => b.id === student.id ? { ...b, properties: newProperties } : b));
-    if (supabase) supabase.from("blocks").update({ properties: newProperties, updated_at: new Date().toISOString() }).eq("id", student.id);
-  }, [billingMonth]);
+    void persistBlockUpdate(student.id, { properties: newProperties });
+  }, [billingMonth, persistBlockUpdate]);
 
   // 전미결 결제
   const handlePayPrevMonth = useCallback((student: Block, unpaidMonth: string, e: React.MouseEvent) => {
@@ -507,8 +612,8 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
         : p
     ) as BlockProperty[];
     setLocalBlocks(prev => prev.map(b => b.id === student.id ? { ...b, properties: newProperties } : b));
-    if (supabase) supabase.from("blocks").update({ properties: newProperties, updated_at: new Date().toISOString() }).eq("id", student.id);
-  }, []);
+    void persistBlockUpdate(student.id, { properties: newProperties });
+  }, [persistBlockUpdate]);
 
   // 학년별 분포
   const tagDistribution = useMemo(() => {
@@ -599,10 +704,25 @@ export function SharedStudentListView({ blocks }: SharedStudentListViewProps) {
   return (
     <main className="min-h-screen bg-background">
       {/* 상단 안내 배너 */}
-      <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-200 text-center">
+      <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center justify-center gap-2">
         <span className="text-sm text-blue-700 font-medium">
           공유된 학생 목록
         </span>
+        {saveStatus === 'saving' && (
+          <span className="flex items-center gap-1 text-xs text-blue-500">
+            <Loader2 className="w-3 h-3 animate-spin" /> 저장 중...
+          </span>
+        )}
+        {saveStatus === 'saved' && (
+          <span className="flex items-center gap-1 text-xs text-green-600">
+            <Check className="w-3 h-3" /> 저장됨
+          </span>
+        )}
+        {saveStatus === 'error' && (
+          <span className="flex items-center gap-1 text-xs text-red-500">
+            <AlertCircle className="w-3 h-3" /> 저장 실패
+          </span>
+        )}
       </div>
 
       {/* 모바일: 학생 상세 전체화면 */}

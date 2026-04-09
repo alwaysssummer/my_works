@@ -48,7 +48,13 @@ export default async function SharePage({
     return <ErrorPage message="서비스가 준비되지 않았습니다." />;
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  // Next.js fetch 캐시 우회 — 새로고침 시 항상 최신 데이터를 받도록
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      fetch: (input, init = {}) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
+  });
 
   // 토큰 검증
   const { data: linkData, error: linkError } = await supabase
